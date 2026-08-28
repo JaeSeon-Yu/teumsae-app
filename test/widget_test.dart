@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:teumsae_app/src/core/location/location_service.dart';
 import 'package:teumsae_app/src/core/network/api_client.dart';
 import 'package:teumsae_app/src/core/network/auth_tokens.dart';
 import 'package:teumsae_app/src/core/storage/token_store.dart';
@@ -32,8 +33,14 @@ class _StubPlacesRepository extends PlacesRepository {
 
   final List<PlaceSummary> stubbed;
 
+  /// 마지막으로 요청된 조건. 위치 변경이 실제 검색에 반영됐는지 확인합니다.
+  PlaceSearchQuery? lastQuery;
+
   @override
-  Future<List<PlaceSummary>> search(PlaceSearchQuery query) async => stubbed;
+  Future<List<PlaceSummary>> search(PlaceSearchQuery query) async {
+    lastQuery = query;
+    return stubbed;
+  }
 
   @override
   Future<PlaceDetail> getPlace(int id) async => PlaceDetail.fromJson({
@@ -150,6 +157,7 @@ Future<void> _pumpApp(
   String initialRoute = AppRoutes.home,
   bool signedIn = false,
   List<int> savedIds = const [],
+  LocationService? location,
 }) async {
   Get.testMode = true;
 
@@ -165,6 +173,11 @@ Future<void> _pumpApp(
   Get.put<AuthController>(AuthController(Get.find()), permanent: true);
   // ShellController와 PlacesController는 ShellBinding이 만들어 줍니다.
   Get.put<PlacesRepository>(_StubPlacesRepository(places), permanent: true);
+  // 실제 구현은 플랫폼 채널을 타므로 테스트에서는 고정 좌표를 씁니다.
+  Get.put<LocationService>(
+    location ?? const FixedLocationService(UserLocation(lat: 37.5, lng: 127.1)),
+    permanent: true,
+  );
   Get.put<SavedRepository>(
     _StubSavedRepository(initialIds: savedIds),
     permanent: true,
@@ -425,6 +438,45 @@ void main() {
       await tester.tap(_tab('저장'));
       await tester.pumpAndSettle();
       expect(find.text('총 1개'), findsOneWidget);
+    });
+
+    testWidgets('내 위치를 누르면 현재 좌표로 검색하고 다시 누르면 되돌린다', (tester) async {
+      await _pumpApp(tester, places: const [samplePlace]);
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      await tester.tap(find.widgetWithText(FilterChip, '내 위치'));
+      await tester.pumpAndSettle();
+
+      expect(Get.find<PlacesController>().usingCurrentLocation, isTrue);
+      expect(repository.lastQuery?.lat, 37.5);
+
+      await tester.tap(find.widgetWithText(FilterChip, '내 위치'));
+      await tester.pumpAndSettle();
+
+      expect(Get.find<PlacesController>().usingCurrentLocation, isFalse);
+      expect(repository.lastQuery?.lat, 37.592);
+    });
+
+    testWidgets('위치 권한을 거부하면 안내만 띄우고 결과를 지우지 않는다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        location: const FailingLocationService(
+          LocationFailure.permissionDenied,
+        ),
+      );
+
+      await tester.tap(find.widgetWithText(FilterChip, '내 위치'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('현재 위치 권한을 허용해 주세요.'), findsOneWidget);
+      expect(find.text('성북구립도서관'), findsOneWidget);
+      expect(Get.find<PlacesController>().usingCurrentLocation, isFalse);
+
+      // 스낵바는 3초 뒤 스스로 닫힙니다. 그 타이머를 남겨 두면
+      // 테스트 종료 시점에 "Timer is still pending"으로 실패합니다.
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
     });
   });
 

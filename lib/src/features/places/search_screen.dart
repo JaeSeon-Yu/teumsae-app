@@ -31,6 +31,33 @@ class SearchScreen extends GetView<PlacesController> {
           Obx(
             () => _FilterBar(
               query: controller.query,
+              isLocating: controller.isLocating,
+              usingCurrentLocation: controller.usingCurrentLocation,
+              onToggleCurrentLocation: () async {
+                if (controller.usingCurrentLocation) {
+                  await controller.useDefaultLocation();
+                  return;
+                }
+
+                await controller.useCurrentLocation();
+
+                // 성공은 결과 목록이 바뀌는 것으로 보입니다. 실패만 따로 알려 줍니다.
+                final message = controller.locationError;
+                if (message == null) {
+                  return;
+                }
+
+                controller.clearLocationError();
+                Get.showSnackbar(
+                  GetSnackBar(
+                    message: message,
+                    duration: const Duration(seconds: 3),
+                    snackPosition: SnackPosition.BOTTOM,
+                    margin: const EdgeInsets.all(AppSpacing.md),
+                    borderRadius: AppRadius.control,
+                  ),
+                );
+              },
               onOpenFilters: () async {
                 final applied = await SearchFiltersSheet.show(
                   context,
@@ -105,12 +132,18 @@ class _ThemeTabs extends StatelessWidget {
 class _FilterBar extends StatelessWidget {
   const _FilterBar({
     required this.query,
+    required this.isLocating,
+    required this.usingCurrentLocation,
+    required this.onToggleCurrentLocation,
     required this.onOpenFilters,
     required this.onSortChanged,
     required this.onToggleOpenOnly,
   });
 
   final PlaceSearchQuery query;
+  final bool isLocating;
+  final bool usingCurrentLocation;
+  final VoidCallback onToggleCurrentLocation;
   final VoidCallback onOpenFilters;
   final ValueChanged<SearchSort> onSortChanged;
   final VoidCallback onToggleOpenOnly;
@@ -138,6 +171,20 @@ class _FilterBar extends StatelessWidget {
               ),
               icon: const Icon(Icons.tune, size: 18),
               label: Text(activeCount == 0 ? '조건' : '조건 $activeCount'),
+            ),
+            // 조건 시트 밖에 둡니다. 좌표가 바뀌면 결과가 전부 달라져서
+            // 다른 조건과 함께 초안으로 묶으면 무엇이 바뀐 건지 알기 어렵습니다.
+            FilterChip(
+              label: const Text('내 위치'),
+              selected: usingCurrentLocation,
+              // 조회 중에는 잠급니다. 연달아 누르면 요청이 겹칩니다.
+              onSelected: isLocating ? null : (_) => onToggleCurrentLocation(),
+              avatar: isLocating
+                  ? const SizedBox.square(
+                      dimension: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.my_location, size: 18),
             ),
             FilterChip(
               label: const Text('지금 운영중'),

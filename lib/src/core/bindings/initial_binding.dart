@@ -10,6 +10,7 @@ import '../../features/saved/saved_controller.dart';
 import '../../features/saved/saved_repository.dart';
 import '../../features/shell/shell_controller.dart';
 import '../network/api_client.dart';
+import '../location/location_service.dart';
 import '../storage/token_store.dart';
 
 /// 앱 시작 시 한 번 등록하는 의존성.
@@ -53,6 +54,12 @@ class InitialBinding extends Bindings {
       permanent: true,
     );
 
+    // 위치 조회는 플랫폼 채널만 쓰고 상태가 없어서 앱 전체에 하나만 둡니다.
+    Get.put<LocationService>(
+      const GeolocatorLocationService(),
+      permanent: true,
+    );
+
     Get.put<SavedRepository>(
       SavedRepository(Get.find<ApiClient>()),
       permanent: true,
@@ -78,7 +85,10 @@ class ShellBinding extends Bindings {
   void dependencies() {
     Get.lazyPut<ShellController>(ShellController.new);
     Get.lazyPut<PlacesController>(
-      () => PlacesController(Get.find<PlacesRepository>()),
+      () => PlacesController(
+        repository: Get.find<PlacesRepository>(),
+        location: Get.find<LocationService>(),
+      ),
     );
   }
 }

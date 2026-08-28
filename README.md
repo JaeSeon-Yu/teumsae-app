@@ -55,6 +55,7 @@ lib/
         api_exception.dart         서버 {status, message} → 화면용 예외
         auth_tokens.dart           토큰 + 만료 시각 계산
       storage/token_store.dart     보안 저장소 (+ 테스트용 메모리 구현)
+      location/location_service.dart 현재 위치 조회 (geolocator + 테스트용 구현)
       theme/                       웹 globals.css 토큰 포팅
     features/
       shell/                       하단 탭 셸(ShellController · ShellTab · MainShell)
@@ -102,7 +103,8 @@ lib/
 - **의존성**: 모든 등록은 `core/bindings/initial_binding.dart`에 모읍니다.
   화면에서 `Get.put`을 직접 호출하지 않습니다.
   - `InitialBinding`: TokenStore, ApiClient, AuthRepository, `AuthController`,
-    PlacesRepository, SavedRepository, `SavedController`를 `permanent: true`로 등록합니다.
+    PlacesRepository, LocationService, SavedRepository, `SavedController`를
+    `permanent: true`로 등록합니다.
     로그인 상태와 저장 상태는 라우트가 바뀌어도 유지돼야 하기 때문입니다.
   - `ShellBinding`: 셸(`/`)에서만 쓰는 `ShellController`와 `PlacesController`를
     `lazyPut`으로 등록합니다. 검색 화면이 셸의 탭 안에 있어 수명이 같습니다.
@@ -173,7 +175,7 @@ lib/
 3. ~~저장(북마크)~~ (완료: 저장 탭 · 검색·상세의 저장 버튼)
 4. ~~설정~~ (완료: 닉네임·비밀번호 변경, 회원 탈퇴)
 5. ~~검색 필터 전체~~ (완료: 조건 시트 · 정렬 · 영업중 토글)
-6. 위치 권한 + 현재 위치 검색
+6. ~~위치 권한 + 현재 위치 검색~~ (완료: 검색 바의 "내 위치" 토글)
 7. 리뷰 (`/api/places/{id}/reviews`)
 8. 지도 (검색 결과 · 상세) — 네이티브 지도 SDK 선정 필요
 9. 장소 등록·수정 + 내가 등록한 장소
@@ -207,6 +209,22 @@ lib/
   그래서 시트의 활성 개수 배지에도 세지 않습니다.
 - 날씨(`weather`)는 항상 `ANY`입니다. 웹에도 선택 UI가 없습니다.
   점수 계산에서 상황 적합도가 빠지는 셈이라, 넣으려면 웹과 함께 정하는 편이 낫습니다.
+
+### 현재 위치
+
+기본 좌표는 웹과 같은 성북구 부근(37.592, 127.016)이고, 검색 바의 "내 위치"를 누르면
+`geolocator`로 좌표를 받아 다시 검색합니다. 다시 누르면 기본 좌표로 돌아옵니다.
+
+- 위치 조회는 `core/location/location_service.dart`의 `LocationService` 뒤에 둡니다.
+  플랫폼 채널을 타서 위젯 테스트에서 실제 구현을 쓸 수 없기 때문입니다.
+  (`FixedLocationService` · `FailingLocationService`가 테스트용 구현)
+- 실패해도 좌표와 검색 결과를 그대로 둡니다. 권한을 거부한 사용자에게서
+  보고 있던 목록까지 사라지면 앱이 멈춘 것처럼 보입니다.
+- 실패 문구는 `LocationFailure`가 들고 있습니다. 권한 거부·조회 실패 문구는
+  웹 `SearchView.moveToCurrentLocation`과 같게 맞췄고, 위치 서비스 꺼짐과
+  영구 거부는 웹에 없는 앱 전용 상황이라 별도 문구를 씁니다.
+- "내 위치"는 조건 시트 밖에 있어 누르는 즉시 검색하고, 활성 개수 배지에도 세지 않습니다.
+  (테마·정렬·운영중과 같은 취급)
 
 ### 저장 상태
 
@@ -242,7 +260,6 @@ lib/
 
 ## 아직 하지 않은 것
 
-- 위치 권한 및 현재 위치 검색: 지금은 웹과 같은 기본 좌표(37.592, 127.016)로 검색합니다.
 - 지도, 장소 등록·수정, 후기, 소셜/Firebase 로그인. (위 이식 순서 참고)
 - 상세 화면의 외부 지도 앱 연결: 지도 단계에서 함께 붙입니다.
 - 내 정보 탭의 저장·등록 개수 카드: 등록 장소 기능과 함께 넣는 편이 낫습니다.
