@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/map/map_bootstrap.dart';
 import '../../core/theme/app_colors.dart';
 import '../../routes/app_routes.dart';
 import '../../widgets/app_badge.dart';
 import '../../widgets/app_callout.dart';
 import '../../widgets/score_badge.dart';
 import '../saved/save_place_button.dart';
+import 'place_map.dart';
 import 'place_search_query.dart';
 import 'place_summary.dart';
 import 'places_controller.dart';
@@ -19,7 +21,18 @@ class SearchScreen extends GetView<PlacesController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('틈새')),
+      appBar: AppBar(
+        title: const Text('틈새'),
+        actions: [
+          Obx(
+            () => IconButton(
+              onPressed: controller.toggleMapView,
+              tooltip: controller.isMapView ? '목록으로 보기' : '지도로 보기',
+              icon: Icon(controller.isMapView ? Icons.list : Icons.map_outlined),
+            ),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Obx(
@@ -81,6 +94,22 @@ class SearchScreen extends GetView<PlacesController> {
               final message = controller.errorMessage;
               if (message != null) {
                 return _ErrorView(message: message, onRetry: controller.search);
+              }
+
+              if (controller.isMapView) {
+                return Padding(
+                  // 지도가 없을 때 뜨는 안내 문구가 화면에 붙지 않게 여백을 둡니다.
+                  padding: MapBootstrap.isAvailable
+                      ? EdgeInsets.zero
+                      : const EdgeInsets.all(AppSpacing.lg),
+                  child: Get.find<PlaceMapBuilder>().results(
+                    places: controller.places,
+                    centerLat: controller.query.lat,
+                    centerLng: controller.query.lng,
+                    onPlaceTap: (id) => Get.toNamed(AppRoutes.placeDetail(id)),
+                    onSearchArea: controller.searchArea,
+                  ),
+                );
               }
 
               return _ResultList(

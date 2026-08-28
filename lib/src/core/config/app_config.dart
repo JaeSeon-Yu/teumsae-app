@@ -13,6 +13,18 @@ abstract final class AppConfig {
   /// `RefreshTokenRequest.deviceLabel`은 100자 제한입니다.
   static const maxDeviceLabelLength = 100;
 
+  /// 네이버 지도 Client ID. 웹의 `NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`에 대응합니다.
+  ///
+  /// NCP 콘솔 > Services > Application Services > Maps에서 Application을 만들고
+  /// **Mobile Dynamic Map**을 켠 뒤, Android 패키지 이름과 iOS Bundle ID로
+  /// `kr.co.jason.teumsae`를 등록해야 발급된 키가 앱에서 통합니다.
+  /// (웹 키를 그대로 쓰면 인증이 거부됩니다. 등록된 앱 식별자가 없기 때문입니다)
+  ///
+  /// 비워 두면 지도 자리에 안내 문구가 뜨고 나머지 기능은 그대로 동작합니다.
+  static const naverMapClientId = String.fromEnvironment(
+    'TEUMSAE_NAVER_MAP_CLIENT_ID',
+  );
+
   static const connectTimeout = Duration(seconds: 8);
   static const receiveTimeout = Duration(seconds: 8);
 }

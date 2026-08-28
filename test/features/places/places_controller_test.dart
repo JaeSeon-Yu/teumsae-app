@@ -15,6 +15,8 @@ const _place = PlaceSummary(
   name: '성북구립도서관',
   typeLabel: '도서관',
   address: '서울 성북구 화랑로',
+  lat: 37.5921,
+  lng: 127.0161,
   distanceMeters: 420,
   priceLabel: '무료',
   restScore: 87,
@@ -304,6 +306,59 @@ void main() {
 
       expect(controller.isLocating, isFalse);
       expect(repository.lastQuery?.lat, 35.1);
+    });
+  });
+
+  group('지도', () {
+    test('목록과 지도를 오갈 때 다시 검색하지 않는다', () async {
+      final repository = _StubPlacesRepository();
+      final controller = _controller(repository);
+      await controller.search();
+
+      controller.toggleMapView();
+      expect(controller.isMapView, isTrue);
+
+      controller.toggleMapView();
+      expect(controller.isMapView, isFalse);
+      // 같은 결과를 다르게 보는 것이므로 요청은 늘지 않습니다.
+      expect(repository.callCount, 1);
+    });
+
+    test('지도에서 고른 지역으로 다시 검색한다', () async {
+      final repository = _StubPlacesRepository();
+      final controller = _controller(repository);
+      await controller.search();
+
+      await controller.searchArea(37.55, 126.99);
+
+      expect(repository.lastQuery?.lat, 37.55);
+      expect(repository.lastQuery?.lng, 126.99);
+      expect(repository.callCount, 2);
+    });
+
+    test('지역을 직접 고르면 내 위치 상태가 풀린다', () async {
+      final repository = _StubPlacesRepository();
+      final controller = _controller(repository);
+      await controller.useCurrentLocation();
+      expect(controller.usingCurrentLocation, isTrue);
+
+      await controller.searchArea(37.55, 126.99);
+
+      // 칩은 켜져 있는데 중심이 다른 곳인 상태를 막습니다.
+      expect(controller.usingCurrentLocation, isFalse);
+    });
+
+    test('지역 재검색은 다른 조건을 건드리지 않는다', () async {
+      final repository = _StubPlacesRepository();
+      final controller = _controller(repository);
+      await controller.applyFilters(
+        controller.query.copyWith(radius: 3000, theme: SearchTheme.toilet),
+      );
+
+      await controller.searchArea(37.55, 126.99);
+
+      expect(repository.lastQuery?.radius, 3000);
+      expect(repository.lastQuery?.theme, SearchTheme.toilet);
     });
   });
 }

@@ -25,6 +25,7 @@ class PlacesController extends GetxController {
   final _isLocating = false.obs;
   final _locationError = RxnString();
   final _usingCurrentLocation = false.obs;
+  final _isMapView = false.obs;
 
   PlaceSearchQuery get query => _query.value;
   List<PlaceSummary> get places => _places;
@@ -39,6 +40,21 @@ class PlacesController extends GetxController {
 
   /// 지금 검색에 쓰는 좌표가 현재 위치인지. 기본 좌표면 `false`입니다.
   bool get usingCurrentLocation => _usingCurrentLocation.value;
+
+  /// 결과를 지도로 보고 있는지. `false`면 목록입니다.
+  bool get isMapView => _isMapView.value;
+
+  /// 목록 ↔ 지도 전환. 검색은 다시 하지 않습니다. 같은 결과를 다르게 보는 것뿐입니다.
+  void toggleMapView() => _isMapView.value = !_isMapView.value;
+
+  /// 지도에서 옮긴 지역으로 다시 검색합니다.
+  ///
+  /// 사용자가 직접 지도를 옮겨 고른 지역이므로 "내 위치" 상태는 해제합니다.
+  /// 그러지 않으면 칩은 켜져 있는데 검색 중심은 다른 곳이 됩니다.
+  Future<void> searchArea(double lat, double lng) {
+    _usingCurrentLocation.value = false;
+    return _apply(_query.value.copyWith(lat: lat, lng: lng));
+  }
 
   @override
   void onInit() {

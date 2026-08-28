@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../widgets/app_badge.dart';
@@ -9,6 +10,7 @@ import '../saved/save_place_button.dart';
 import 'operating_hours.dart';
 import 'place_detail.dart';
 import 'place_detail_controller.dart';
+import 'place_map.dart';
 
 /// 장소 상세. 웹 `/places/[id]`에 대응합니다.
 ///
@@ -498,7 +500,36 @@ class _LocationSection extends StatelessWidget {
             '${place.lat.toStringAsFixed(6)}, ${place.lng.toStringAsFixed(6)}',
             style: textTheme.labelSmall,
           ),
-          // 지도와 외부 지도 앱 연결은 지도 단계에서 함께 붙입니다.
+          const SizedBox(height: AppSpacing.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppRadius.control),
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: Get.find<PlaceMapBuilder>().single(
+                lat: place.lat,
+                lng: place.lng,
+                name: place.name,
+              ),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              // 길찾기는 네이버 지도 앱이 훨씬 잘합니다. 앱이 없으면 브라우저가 받습니다.
+              // 웹 상세 화면도 같은 주소로 보냅니다.
+              onPressed: () => launchUrl(
+                Uri.parse(
+                  'https://map.naver.com/p/search/'
+                  '${Uri.encodeComponent(place.name)}',
+                ),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Icons.open_in_new, size: 18),
+              label: const Text('네이버 지도에서 보기'),
+            ),
+          ),
         ],
       ),
     );

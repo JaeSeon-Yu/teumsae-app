@@ -19,16 +19,28 @@ export PATH="$HOME/flutter-sdks/3.41.2/flutter/bin:$PATH"
 ```
 
 API 서버 주소는 `--dart-define`으로 넣습니다. 넣지 않으면 운영 서버를 가리킵니다.
+네이버 지도 Client ID도 같은 방식으로 넣습니다. 없으면 지도 자리에 안내 문구가
+뜨고 나머지 기능은 그대로 동작합니다.
 
 ```bash
 flutter pub get
 
 # 로컬 서버 (Android 에뮬레이터는 10.0.2.2가 호스트의 localhost입니다)
-flutter run --dart-define=TEUMSAE_API_BASE_URL=http://10.0.2.2:8080
+flutter run \
+  --dart-define=TEUMSAE_API_BASE_URL=http://10.0.2.2:8080 \
+  --dart-define=TEUMSAE_NAVER_MAP_CLIENT_ID=발급받은_클라이언트_ID
 
 # iOS 시뮬레이터
-flutter run --dart-define=TEUMSAE_API_BASE_URL=http://localhost:8080
+flutter run \
+  --dart-define=TEUMSAE_API_BASE_URL=http://localhost:8080 \
+  --dart-define=TEUMSAE_NAVER_MAP_CLIENT_ID=발급받은_클라이언트_ID
 ```
+
+지도 키는 웹(`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`)과 **같은 값을 쓸 수 없습니다.**
+NCP 콘솔 > Services > Application Services > Maps에서 Application을 만들고
+**Mobile Dynamic Map**을 켠 뒤, Android 패키지 이름과 iOS Bundle ID에
+`kr.co.jason.teumsae`를 등록해야 그 Application의 Client ID가 앱에서 통합니다.
+(등록된 앱 식별자가 없으면 SDK가 인증을 거부합니다)
 
 ## 검증
 
@@ -36,6 +48,28 @@ flutter run --dart-define=TEUMSAE_API_BASE_URL=http://localhost:8080
 flutter analyze
 flutter test
 ```
+
+### Android 빌드: SDK platform 이름 불일치
+
+`flutter build apk`가 아래처럼 실패하면 로컬 SDK에 심볼릭 링크가 필요합니다.
+
+```
+Failed to find target with hash string 'android-37' in: ~/Library/Android/sdk
+```
+
+```bash
+ln -s android-37.0 ~/Library/Android/sdk/platforms/android-37
+```
+
+`flutter_secure_storage 11.0.0`이 자기 모듈을 `compileSdk = 37`로 빌드하는데,
+SDK는 API 37부터 minor 명명(`platforms;android-37.0`)만 제공하고
+AGP 8.11.1은 `android-37`을 찾습니다. `platforms;android-37`은 아예 없는 패키지라
+앱의 `compileSdk`를 낮춰도 해결되지 않습니다. (플러그인 모듈이 따로 37을 찾습니다)
+
+근본 해결책은 minor 명명을 이해하는 **AGP 9.1.1+로 올리는 것**입니다. 다만 그러려면
+Gradle 9 업그레이드와 Flutter의 built-in Kotlin 마이그레이션이 함께 필요해서
+(공식 breaking change 가이드가 따로 있습니다) 기능 작업과 섞지 않고 미뤄 뒀습니다.
+그때 이 심볼릭 링크는 지워도 됩니다.
 
 ## 구조
 
@@ -56,6 +90,7 @@ lib/
         auth_tokens.dart           토큰 + 만료 시각 계산
       storage/token_store.dart     보안 저장소 (+ 테스트용 메모리 구현)
       location/location_service.dart 현재 위치 조회 (geolocator + 테스트용 구현)
+      map/map_bootstrap.dart       네이버 지도 SDK 초기화 · 사용 가능 여부
       theme/                       웹 globals.css 토큰 포팅
     features/
       shell/                       하단 탭 셸(ShellController · ShellTab · MainShell)
@@ -81,6 +116,7 @@ lib/
 | `place_format.dart` | 거리·비용·체류·공간 표시 규칙 (웹 `format.ts`) |
 | `operating_hours.dart` | 자유 형식 `openingHoursText` 파싱 |
 | `search_filters_sheet.dart` | 검색 조건 바텀시트 (웹 `SearchFilters`) |
+| `place_map.dart` | 지도 위젯 자리(`PlaceMapBuilder`) + 네이버 지도 구현 |
 
 ### 화면 구조
 
@@ -103,8 +139,8 @@ lib/
 - **의존성**: 모든 등록은 `core/bindings/initial_binding.dart`에 모읍니다.
   화면에서 `Get.put`을 직접 호출하지 않습니다.
   - `InitialBinding`: TokenStore, ApiClient, AuthRepository, `AuthController`,
-    PlacesRepository, LocationService, SavedRepository, `SavedController`를
-    `permanent: true`로 등록합니다.
+    PlacesRepository, LocationService, PlaceMapBuilder, SavedRepository,
+    `SavedController`를 `permanent: true`로 등록합니다.
     로그인 상태와 저장 상태는 라우트가 바뀌어도 유지돼야 하기 때문입니다.
   - `ShellBinding`: 셸(`/`)에서만 쓰는 `ShellController`와 `PlacesController`를
     `lazyPut`으로 등록합니다. 검색 화면이 셸의 탭 안에 있어 수명이 같습니다.
@@ -177,7 +213,7 @@ lib/
 5. ~~검색 필터 전체~~ (완료: 조건 시트 · 정렬 · 영업중 토글)
 6. ~~위치 권한 + 현재 위치 검색~~ (완료: 검색 바의 "내 위치" 토글)
 7. 리뷰 (`/api/places/{id}/reviews`)
-8. 지도 (검색 결과 · 상세) — 네이티브 지도 SDK 선정 필요
+8. ~~지도 (검색 결과 · 상세)~~ (완료: 네이버 지도 · `flutter_naver_map`)
 9. 장소 등록·수정 + 내가 등록한 장소
 10. 소셜 로그인 (Firebase Google/Apple)
 11. 공개 프로필 + 차단·신고
@@ -226,6 +262,28 @@ lib/
 - "내 위치"는 조건 시트 밖에 있어 누르는 즉시 검색하고, 활성 개수 배지에도 세지 않습니다.
   (테마·정렬·운영중과 같은 취급)
 
+### 지도
+
+검색 탭은 앱바의 아이콘으로 목록 ↔ 지도를 오갑니다. 상세 화면의 위치 구역에는
+움직이지 않는 지도와 네이버 지도 앱으로 나가는 버튼이 있습니다.
+
+- 화면은 `NaverMap`을 직접 쓰지 않고 `PlaceMapBuilder`(`place_map.dart`)에서 받습니다.
+  지도는 플랫폼 뷰라 위젯 테스트에서 그릴 수 없어서, 테스트는 마커 탭과
+  지역 재검색만 확인할 수 있는 대역을 `Get.put`으로 바꿔 끼웁니다.
+- SDK 초기화는 `MapBootstrap`이 `runApp` 전에 한 번 합니다. 키가 없거나 인증이
+  거부되면 예외를 던지지 않고 이유만 남깁니다. 지도를 못 써도 검색·저장은
+  계속 써야 하기 때문입니다. 지도 자리에는 그 이유가 안내 문구로 뜹니다.
+- 인증 방식은 NCP의 새 방식(`FlutterNaverMap().init`)을 씁니다.
+  웹은 아직 구 방식(`oapi.map.naver.com` + `ncpClientId`)이라 키를 공유할 수 없습니다.
+- 목록 ↔ 지도 전환은 재검색하지 않습니다. 같은 결과를 다르게 보는 것뿐입니다.
+- 지도를 옮기면 바로 검색하지 않고 "이 지역 재검색" 버튼을 띄웁니다. 손을 뗄 때마다
+  검색하면 요청이 계속 나가고 결과가 흔들립니다. 웹도 이동과 재검색을 분리해 둡니다.
+- 지역을 직접 고르면 "내 위치" 상태를 해제합니다. 칩은 켜져 있는데 검색 중심은
+  다른 곳인 상태를 막습니다.
+- 마커 위치는 검색 응답의 `lat`/`lng`를 씁니다. (`PlaceSummary`)
+- 상세 지도는 제스처를 모두 끕니다. 긴 `ListView` 안에서 지도가 스크롤을 먹으면
+  화면을 내릴 수 없습니다. 길찾기는 네이버 지도 앱이 훨씬 잘하므로 외부로 보냅니다.
+
 ### 저장 상태
 
 저장 여부의 출처는 `SavedController` 하나입니다. 검색 카드·상세 화면·저장 탭이
@@ -251,8 +309,9 @@ lib/
   (위 "서버 연동 규칙" 참고)
 - 소셜 계정의 비밀번호 변경: 웹은 폼을 그대로 보여 주고 서버 실패로 알려 주지만,
   앱은 `provider != LOCAL`이면 폼 대신 안내 문구를 띄웁니다.
-- 검색 반경 선택: 웹에는 없습니다. 웹은 지도를 움직여 범위를 바꾸지만
-  앱에는 아직 지도가 없어 반경 외에는 넓힐 방법이 없습니다.
+- 검색 반경 선택: 웹에는 없습니다. 웹은 지도를 움직여 범위를 바꾸는데, 앱은
+  좁은 화면에서 목록을 주로 보기 때문에 지도를 열지 않고도 범위를 넓힐 수단이
+  필요합니다. (지도에서는 "이 지역 재검색"으로 중심을 옮길 수 있습니다)
 - 테마 탭에 "전체"(`ANY`)를 넣었습니다. 웹 `THEME_ORDER`와 같은 구성입니다.
   라벨도 웹 `THEME_CONFIG`에 맞췄습니다. (휴식 · 쇼핑 · 즐길거리 · 화장실)
 - 클라이언트 재정렬: 웹은 서버에 `sort`를 보내고 받은 목록을 화면에서 또 정렬합니다.
@@ -260,8 +319,7 @@ lib/
 
 ## 아직 하지 않은 것
 
-- 지도, 장소 등록·수정, 후기, 소셜/Firebase 로그인. (위 이식 순서 참고)
-- 상세 화면의 외부 지도 앱 연결: 지도 단계에서 함께 붙입니다.
+- 장소 등록·수정, 후기, 소셜/Firebase 로그인. (위 이식 순서 참고)
 - 내 정보 탭의 저장·등록 개수 카드: 등록 장소 기능과 함께 넣는 편이 낫습니다.
 - 다크 테마: 웹에도 다크 토큰이 없어 함께 정의한 뒤 옮기는 편이 낫습니다.
 - Pretendard 폰트 에셋: 현재는 플랫폼 기본 한글 폰트를 씁니다.

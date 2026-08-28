@@ -10,6 +10,8 @@ class PlaceSummary {
     required this.name,
     required this.typeLabel,
     required this.address,
+    required this.lat,
+    required this.lng,
     required this.distanceMeters,
     required this.priceLabel,
     required this.restScore,
@@ -23,6 +25,11 @@ class PlaceSummary {
   final String name;
   final String typeLabel;
   final String address;
+
+  /// 지도 마커 위치. 목록 화면에서는 쓰지 않습니다.
+  final double lat;
+  final double lng;
+
   final int distanceMeters;
   final String priceLabel;
   final int restScore;
@@ -37,6 +44,8 @@ class PlaceSummary {
       name: json['name'] as String,
       typeLabel: json['typeLabel'] as String? ?? '',
       address: json['address'] as String? ?? '',
+      lat: (json['lat'] as num?)?.toDouble() ?? 0,
+      lng: (json['lng'] as num?)?.toDouble() ?? 0,
       distanceMeters: (json['distanceMeters'] as num?)?.round() ?? 0,
       priceLabel: json['priceLabel'] as String? ?? '',
       restScore: (json['restScore'] as num?)?.round() ?? 0,

@@ -4,6 +4,7 @@ import '../../features/account/settings_controller.dart';
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_repository.dart';
 import '../../features/places/place_detail_controller.dart';
+import '../../features/places/place_map.dart';
 import '../../features/places/places_controller.dart';
 import '../../features/places/places_repository.dart';
 import '../../features/saved/saved_controller.dart';
@@ -57,6 +58,13 @@ class InitialBinding extends Bindings {
     // 위치 조회는 플랫폼 채널만 쓰고 상태가 없어서 앱 전체에 하나만 둡니다.
     Get.put<LocationService>(
       const GeolocatorLocationService(),
+      permanent: true,
+    );
+
+    // 지도 위젯도 상태가 없습니다. 인터페이스로 등록해 두면
+    // 위젯 테스트가 플랫폼 뷰 없는 대역으로 바꿔 끼울 수 있습니다.
+    Get.put<PlaceMapBuilder>(
+      const NaverPlaceMapBuilder(),
       permanent: true,
     );
 

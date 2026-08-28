@@ -11,6 +11,7 @@ import 'package:teumsae_app/src/features/auth/auth_repository.dart';
 import 'package:teumsae_app/src/features/auth/auth_user.dart';
 import 'package:teumsae_app/src/features/places/place_detail.dart';
 import 'package:teumsae_app/src/features/places/place_detail_controller.dart';
+import 'package:teumsae_app/src/features/places/place_map.dart';
 import 'package:teumsae_app/src/features/places/place_search_query.dart';
 import 'package:teumsae_app/src/features/places/place_summary.dart';
 import 'package:teumsae_app/src/features/places/places_controller.dart';
@@ -147,6 +148,43 @@ AuthSession _session() => AuthSession(
       ),
     );
 
+/// 지도는 플랫폼 뷰라 위젯 테스트에서 그릴 수 없습니다.
+/// 화면 배선(마커 탭 → 상세 이동, 지역 재검색)만 확인할 수 있는 대역을 씁니다.
+class _FakePlaceMapBuilder implements PlaceMapBuilder {
+  @override
+  Widget results({
+    required List<PlaceSummary> places,
+    required double centerLat,
+    required double centerLng,
+    required ValueChanged<int> onPlaceTap,
+    required void Function(double lat, double lng) onSearchArea,
+  }) {
+    return Column(
+      children: [
+        Text('지도 중심 $centerLat, $centerLng'),
+        for (final place in places)
+          TextButton(
+            onPressed: () => onPlaceTap(place.id),
+            child: Text('마커 ${place.name}'),
+          ),
+        TextButton(
+          onPressed: () => onSearchArea(37.55, 126.99),
+          child: const Text('이 지역 재검색'),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Widget single({
+    required double lat,
+    required double lng,
+    required String name,
+  }) {
+    return Text('지도 $name');
+  }
+}
+
 /// 실제 앱과 같은 라우트·바인딩으로 띄우되, 의존성만 테스트용으로 갈아끼웁니다.
 ///
 /// 보안 저장소는 플랫폼 채널을 쓰므로 [InMemoryTokenStore]로 바꿉니다.
@@ -178,6 +216,7 @@ Future<void> _pumpApp(
     location ?? const FixedLocationService(UserLocation(lat: 37.5, lng: 127.1)),
     permanent: true,
   );
+  Get.put<PlaceMapBuilder>(_FakePlaceMapBuilder(), permanent: true);
   Get.put<SavedRepository>(
     _StubSavedRepository(initialIds: savedIds),
     permanent: true,
@@ -231,6 +270,8 @@ void main() {
     name: '성북구립도서관',
     typeLabel: '도서관',
     address: '서울 성북구 화랑로',
+    lat: 37.5921,
+    lng: 127.0161,
     distanceMeters: 420,
     priceLabel: '무료',
     restScore: 87,
@@ -477,6 +518,54 @@ void main() {
       // 테스트 종료 시점에 "Timer is still pending"으로 실패합니다.
       await tester.pump(const Duration(seconds: 3));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('지도로 바꾸면 검색 결과를 마커로 넘긴다', (tester) async {
+      await _pumpApp(tester, places: const [samplePlace]);
+
+      await tester.tap(find.byIcon(Icons.map_outlined));
+      await tester.pumpAndSettle();
+
+      expect(find.text('마커 성북구립도서관'), findsOneWidget);
+      expect(find.text('지도 중심 37.592, 127.016'), findsOneWidget);
+      // 목록은 더 보이지 않습니다.
+      expect(find.byType(Card), findsNothing);
+    });
+
+    testWidgets('마커를 누르면 장소 상세로 이동한다', (tester) async {
+      await _pumpApp(tester, places: const [samplePlace]);
+      await tester.tap(find.byIcon(Icons.map_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('마커 성북구립도서관'));
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.placeDetail(samplePlace.id));
+    });
+
+    testWidgets('이 지역 재검색은 지도 중심으로 다시 검색한다', (tester) async {
+      await _pumpApp(tester, places: const [samplePlace]);
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+      await tester.tap(find.byIcon(Icons.map_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('이 지역 재검색'));
+      await tester.pumpAndSettle();
+
+      expect(repository.lastQuery?.lat, 37.55);
+      expect(repository.lastQuery?.lng, 126.99);
+    });
+
+    testWidgets('지도에서 목록으로 되돌릴 수 있다', (tester) async {
+      await _pumpApp(tester, places: const [samplePlace]);
+      await tester.tap(find.byIcon(Icons.map_outlined));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.list));
+      await tester.pumpAndSettle();
+
+      expect(find.text('마커 성북구립도서관'), findsNothing);
+      expect(find.text('성북구립도서관'), findsOneWidget);
     });
   });
 
