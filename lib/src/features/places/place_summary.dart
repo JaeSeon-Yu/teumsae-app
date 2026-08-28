@@ -1,3 +1,5 @@
+import 'place_format.dart';
+
 /// 서버 `PlaceSummary` 중 목록 표시에 필요한 필드만 담습니다.
 ///
 /// 서버가 필드를 더 내려주더라도 무시합니다. 화면에서 쓰는 값만 파싱해 두면
@@ -53,10 +55,5 @@ class PlaceSummary {
   }
 
   /// 1km 미만은 m, 그 이상은 km로 표시합니다. (웹 `formatDistance`와 같은 규칙)
-  String get distanceLabel {
-    if (distanceMeters < 1000) {
-      return '${distanceMeters}m';
-    }
-    return '${(distanceMeters / 1000).toStringAsFixed(1)}km';
-  }
+  String get distanceLabel => PlaceFormat.distance(distanceMeters);
 }

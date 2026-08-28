@@ -110,6 +110,49 @@ class AuthRepository {
     }
   }
 
+  // --- 아래 세 개는 토큰 전용 경로가 아니라 웹과 같은 `/api/auth/*`를 씁니다. ---
+  // 서버 `JwtAuthenticationFilter`가 Authorization 헤더를 먼저 보기 때문에
+  // 쿠키 없이도 그대로 동작합니다.
+
+  /// 닉네임을 바꾸고 갱신된 사용자를 돌려줍니다.
+  Future<AuthUser> updateNickname(String nickname) async {
+    final response = await _apiClient.patchJson(
+      '/api/auth/nickname',
+      body: {'nickname': nickname.trim()},
+    );
+
+    return AuthUser.fromJson(response['user'] as Map<String, dynamic>);
+  }
+
+  /// 비밀번호를 바꾸고 **새 토큰으로 다시 로그인**합니다.
+  ///
+  /// 서버는 비밀번호가 바뀌면 그 사용자의 refresh token을 모두 폐기합니다.
+  /// (`AuthService.changePassword` → `revokeAllForUser`)
+  /// 그대로 두면 앱이 다음 갱신 시점에 로그아웃되므로, 바로 재로그인해 세션을 잇습니다.
+  Future<AuthSession> changePassword({
+    required String username,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _apiClient.postEmpty(
+      '/api/auth/password',
+      body: {'currentPassword': currentPassword, 'newPassword': newPassword},
+    );
+
+    return login(username: username, password: newPassword);
+  }
+
+  /// 계정을 비활성화(SUSPENDED)하고 로컬 토큰을 지웁니다.
+  ///
+  /// 서버가 refresh token을 모두 폐기하므로 남겨 둘 이유가 없습니다.
+  Future<void> deleteAccount(String password) async {
+    await _apiClient.deleteEmpty(
+      '/api/auth/me',
+      body: {'password': password},
+    );
+    await _tokenStore.clear();
+  }
+
   Future<AuthSession> _persist(AuthSession session) async {
     await _tokenStore.write(session.tokens);
     return session;

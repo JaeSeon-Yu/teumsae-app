@@ -29,6 +29,12 @@ class AuthController extends GetxController {
   /// 서버 메시지는 이미 한글이므로 화면에서 그대로 보여주면 됩니다.
   String? get errorMessage => _errorMessage.value;
 
+  /// 로그인·로그아웃 시점을 다른 컨트롤러가 알 수 있게 여는 통로.
+  ///
+  /// 예) 저장 목록은 로그인하면 불러오고 로그아웃하면 비워야 합니다.
+  /// `Rx` 자체를 공개하면 밖에서 값을 바꿀 수 있어 읽기 전용 스트림만 냅니다.
+  Stream<AuthUser?> get userChanges => _user.stream;
+
   @override
   void onInit() {
     super.onInit();
@@ -78,6 +84,43 @@ class AuthController extends GetxController {
     } finally {
       _isSubmitting.value = false;
     }
+  }
+
+  // --- 설정 화면용. 실패는 예외로 던집니다. ---
+  // 로그인 화면과 [errorMessage]를 공유하면 설정 화면의 항목별 안내를 구분할 수 없어서
+  // 문구는 부르는 쪽(`SettingsController`)이 정합니다.
+
+  /// 성공하면 [user]의 닉네임이 갱신됩니다.
+  Future<void> updateNickname(String nickname) async {
+    _user.value = await _repository.updateNickname(nickname);
+  }
+
+  /// 비밀번호를 바꾸고 새 토큰으로 세션을 이어 갑니다.
+  ///
+  /// 서버가 비밀번호 변경 시 기존 세션을 모두 폐기하기 때문에
+  /// 재로그인까지 성공해야 로그인 상태가 유지됩니다.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final username = _user.value?.username;
+    if (username == null) {
+      throw StateError('로그인 상태가 아닙니다.');
+    }
+
+    final session = await _repository.changePassword(
+      username: username,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+    _user.value = session.user;
+  }
+
+  /// 계정을 탈퇴하고 로그아웃 상태로 되돌립니다.
+  Future<void> deleteAccount(String password) async {
+    await _repository.deleteAccount(password);
+    _user.value = null;
+    _errorMessage.value = null;
   }
 
   /// refresh까지 실패했을 때 [ApiClient]가 호출합니다.

@@ -63,9 +63,13 @@ class _AuthScreenState extends State<AuthScreen> {
       await _controller.login(username: username, password: password);
     }
 
-    // 성공하면 검색 화면으로 돌아갑니다.
+    // 로그인 화면은 항상 셸 위에 쌓이므로, 되돌아가면 보고 있던 탭이 유지됩니다.
     if (_controller.isSignedIn) {
-      Get.offAllNamed(AppRoutes.search);
+      if (Get.previousRoute == AppRoutes.home) {
+        Get.back();
+      } else {
+        Get.offAllNamed(AppRoutes.home);
+      }
     }
   }
 

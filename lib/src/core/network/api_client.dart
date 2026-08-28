@@ -161,10 +161,25 @@ class ApiClient {
     });
   }
 
+  Future<Map<String, dynamic>> patchJson(String path, {Object? body}) async {
+    return _guard(() async {
+      final response = await _dio.patch<Map<String, dynamic>>(path, data: body);
+      return response.data ?? const {};
+    });
+  }
+
   /// 204를 돌려주는 엔드포인트(로그아웃 등)용.
   Future<void> postEmpty(String path, {Object? body}) async {
     await _guard(() async {
       await _dio.post<void>(path, data: body);
+      return const <String, dynamic>{};
+    });
+  }
+
+  /// 204를 돌려주는 삭제 엔드포인트(저장 취소 등)용.
+  Future<void> deleteEmpty(String path, {Object? body}) async {
+    await _guard(() async {
+      await _dio.delete<void>(path, data: body);
       return const <String, dynamic>{};
     });
   }

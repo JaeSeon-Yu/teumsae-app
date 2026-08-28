@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:teumsae_app/src/core/network/api_client.dart';
 import 'package:teumsae_app/src/core/network/api_exception.dart';
 import 'package:teumsae_app/src/core/storage/token_store.dart';
+import 'package:teumsae_app/src/features/places/place_search_query.dart';
 import 'package:teumsae_app/src/features/places/place_summary.dart';
 import 'package:teumsae_app/src/features/places/places_controller.dart';
 import 'package:teumsae_app/src/features/places/places_repository.dart';
@@ -14,7 +15,7 @@ const _place = PlaceSummary(
   distanceMeters: 420,
   priceLabel: '무료',
   restScore: 87,
-  scoreLabel: '아주 좋아요',
+  scoreLabel: '지금 딱 좋음',
   reasons: ['조용해요'],
   tags: ['wifi'],
 );
@@ -75,7 +76,13 @@ void main() {
     expect(repository.lastQuery?.lat, 37.592);
     expect(repository.lastQuery?.lng, 127.016);
     expect(repository.lastQuery?.radius, 1500);
-    expect(repository.lastQuery?.theme, 'REST');
+    expect(repository.lastQuery?.stayMinutes, 0);
+    expect(repository.lastQuery?.theme, SearchTheme.rest);
+    expect(repository.lastQuery?.budget, SearchBudget.any);
+    expect(repository.lastQuery?.space, SearchSpace.any);
+    expect(repository.lastQuery?.needs, isEmpty);
+    expect(repository.lastQuery?.sort, SearchSort.recommended);
+    expect(repository.lastQuery?.openOnly, isFalse);
   });
 
   test('테마를 바꾸면 새 조건으로 다시 검색한다', () async {
@@ -83,10 +90,10 @@ void main() {
     final controller = PlacesController(repository);
     await controller.search();
 
-    await controller.changeTheme('TOILET');
+    await controller.changeTheme(SearchTheme.toilet);
 
-    expect(controller.query.theme, 'TOILET');
-    expect(repository.lastQuery?.theme, 'TOILET');
+    expect(controller.query.theme, SearchTheme.toilet);
+    expect(repository.lastQuery?.theme, SearchTheme.toilet);
     expect(repository.callCount, 2);
   });
 
@@ -95,8 +102,58 @@ void main() {
     final controller = PlacesController(repository);
     await controller.search();
 
-    await controller.changeTheme('REST');
+    await controller.changeTheme(SearchTheme.rest);
 
     expect(repository.callCount, 1);
+  });
+
+  test('정렬을 바꾸면 다시 검색한다', () async {
+    final repository = _StubPlacesRepository();
+    final controller = PlacesController(repository);
+    await controller.search();
+
+    await controller.changeSort(SearchSort.distance);
+
+    expect(repository.lastQuery?.sort, SearchSort.distance);
+    expect(repository.callCount, 2);
+
+    // 같은 값이면 재검색하지 않습니다.
+    await controller.changeSort(SearchSort.distance);
+    expect(repository.callCount, 2);
+  });
+
+  test('영업중만 토글은 켜고 끌 때마다 다시 검색한다', () async {
+    final repository = _StubPlacesRepository();
+    final controller = PlacesController(repository);
+    await controller.search();
+
+    await controller.toggleOpenOnly();
+    expect(repository.lastQuery?.openOnly, isTrue);
+
+    await controller.toggleOpenOnly();
+    expect(repository.lastQuery?.openOnly, isFalse);
+    expect(repository.callCount, 3);
+  });
+
+  test('조건 시트에서 만든 조건을 한 번에 적용한다', () async {
+    final repository = _StubPlacesRepository();
+    final controller = PlacesController(repository);
+    await controller.search();
+
+    await controller.applyFilters(
+      controller.query.copyWith(
+        radius: 3000,
+        stayMinutes: 60,
+        budget: SearchBudget.free,
+        space: SearchSpace.indoor,
+        needs: {SearchNeed.wifi, SearchNeed.quiet},
+      ),
+    );
+
+    // 여러 항목을 바꿨어도 요청은 한 번만 늘어납니다.
+    expect(repository.callCount, 2);
+    expect(repository.lastQuery?.radius, 3000);
+    expect(repository.lastQuery?.budget, SearchBudget.free);
+    expect(repository.lastQuery?.needs, {SearchNeed.wifi, SearchNeed.quiet});
   });
 }

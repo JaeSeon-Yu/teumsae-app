@@ -12,8 +12,9 @@ abstract final class AuthValidators {
   static const passwordMinLength = 8;
   static const passwordMaxLength = 72;
 
-  /// 서버: `@Size(max = 50)`
+  /// 서버: `@Size(max = 50)` (회원가입), `@Size(min = 2, max = 50)` (닉네임 변경)
   static const nicknameMaxLength = 50;
+  static const nicknameMinLength = 2;
 
   static final _usernamePattern = RegExp(r'^[a-z0-9_]+$');
 
@@ -65,6 +66,21 @@ abstract final class AuthValidators {
     }
     if (nickname.length > nicknameMaxLength) {
       return '닉네임은 $nicknameMaxLength자 이하로 입력해 주세요.';
+    }
+    return null;
+  }
+
+  /// 닉네임 변경은 빈 값을 허용하지 않습니다.
+  /// (서버 `UpdateNicknameRequest`가 `@NotBlank` + `@Size(min = 2)`입니다)
+  static String? validateNicknameChange(String? value) {
+    final nickname = value?.trim() ?? '';
+
+    if (nickname.isEmpty) {
+      return '닉네임을 입력해 주세요.';
+    }
+    if (nickname.length < nicknameMinLength ||
+        nickname.length > nicknameMaxLength) {
+      return '닉네임은 $nicknameMinLength자 이상 $nicknameMaxLength자 이하로 입력해 주세요.';
     }
     return null;
   }

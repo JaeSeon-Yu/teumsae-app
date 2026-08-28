@@ -18,6 +18,9 @@ abstract final class AppConfig {
 }
 
 /// 검색 기본값. 웹 `DEFAULT_SEARCH_PARAMS`와 동일하게 맞춥니다.
+///
+/// 선택 항목의 기본값(테마·예산·정렬 등)은 타입이 있는 열거형이라
+/// `features/places/place_search_query.dart`에 있습니다.
 abstract final class DefaultSearchParams {
   /// 서울 성북구 부근. 위치 권한을 아직 쓰지 않으므로 웹과 같은 기본 좌표를 씁니다.
   static const lat = 37.592;
@@ -26,10 +29,9 @@ abstract final class DefaultSearchParams {
   /// 서버 `PlaceSearchRequest`는 radius 100~5000, stayMinutes 0~360만 허용합니다.
   static const radius = 1500;
   static const stayMinutes = 0;
-  static const budget = 'ANY';
+
+  /// 웹에도 날씨 선택 UI가 없어 항상 ANY로 보냅니다.
   static const weather = 'ANY';
-  static const space = 'ANY';
-  static const sort = 'recommended';
-  static const theme = 'REST';
+
   static const openOnly = false;
 }

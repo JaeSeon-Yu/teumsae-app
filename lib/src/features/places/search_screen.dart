@@ -3,35 +3,45 @@ import 'package:get/get.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../routes/app_routes.dart';
+import '../../widgets/app_badge.dart';
 import '../../widgets/app_callout.dart';
-import '../auth/auth_controller.dart';
+import '../../widgets/score_badge.dart';
+import '../saved/save_place_button.dart';
+import 'place_search_query.dart';
 import 'place_summary.dart';
 import 'places_controller.dart';
+import 'search_filters_sheet.dart';
 
-/// 홈 화면. 검색은 로그인 없이도 됩니다(서버에서 GET /api/places/** 공개).
+/// 검색 탭. 검색은 로그인 없이도 됩니다(서버에서 GET /api/places/** 공개).
 class SearchScreen extends GetView<PlacesController> {
   const SearchScreen({super.key});
-
-  static const themes = <(String, String)>[
-    ('REST', '쉼터'),
-    ('SHOPPING', '쇼핑'),
-    ('PLAY', '놀거리'),
-    ('TOILET', '화장실'),
-  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('틈새'),
-        actions: const [_AccountAction()],
-      ),
+      appBar: AppBar(title: const Text('틈새')),
       body: Column(
         children: [
           Obx(
             () => _ThemeTabs(
               selected: controller.query.theme,
               onSelected: controller.changeTheme,
+            ),
+          ),
+          Obx(
+            () => _FilterBar(
+              query: controller.query,
+              onOpenFilters: () async {
+                final applied = await SearchFiltersSheet.show(
+                  context,
+                  query: controller.query,
+                );
+                if (applied != null) {
+                  await controller.applyFilters(applied);
+                }
+              },
+              onSortChanged: controller.changeSort,
+              onToggleOpenOnly: controller.toggleOpenOnly,
             ),
           ),
           const Divider(height: 1),
@@ -58,77 +68,90 @@ class SearchScreen extends GetView<PlacesController> {
   }
 }
 
-/// 앱바 우측: 로그인 전에는 로그인 버튼, 후에는 닉네임 + 로그아웃 메뉴.
-class _AccountAction extends StatelessWidget {
-  const _AccountAction();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = Get.find<AuthController>();
-
-    return Obx(() {
-      final user = auth.user;
-
-      if (user == null) {
-        return TextButton(
-          onPressed: () => Get.toNamed(AppRoutes.login),
-          child: const Text('로그인'),
-        );
-      }
-
-      return PopupMenuButton<String>(
-        tooltip: '계정 메뉴',
-        onSelected: (value) {
-          if (value == 'logout') {
-            auth.logout();
-          }
-        },
-        itemBuilder: (context) => const [
-          PopupMenuItem(value: 'logout', child: Text('로그아웃')),
-        ],
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppSpacing.md,
-            vertical: AppSpacing.sm,
-          ),
-          child: Row(
-            children: [
-              Text(user.nickname, style: Theme.of(context).textTheme.labelLarge),
-              const Icon(Icons.expand_more, color: AppColors.fgSubtle),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-}
-
 class _ThemeTabs extends StatelessWidget {
   const _ThemeTabs({required this.selected, required this.onSelected});
 
-  final String selected;
-  final ValueChanged<String> onSelected;
+  final SearchTheme selected;
+  final ValueChanged<SearchTheme> onSelected;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.surface,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppSpacing.lg,
-        vertical: AppSpacing.md,
-      ),
-      child: Row(
-        children: [
-          for (final (value, label) in SearchScreen.themes)
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.sm),
-              child: ChoiceChip(
-                label: Text(label),
-                selected: selected == value,
-                onSelected: (_) => onSelected(value),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Row(
+          children: [
+            for (final theme in SearchTheme.values)
+              Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.sm),
+                child: ChoiceChip(
+                  label: Text(theme.label),
+                  selected: selected == theme,
+                  onSelected: (_) => onSelected(theme),
+                ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 조건 버튼 · 정렬 · 영업중 토글. 웹은 사이드 패널과 지도 위 토글로 나뉘어 있지만
+/// 앱은 좁은 화면이라 한 줄에 모읍니다.
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({
+    required this.query,
+    required this.onOpenFilters,
+    required this.onSortChanged,
+    required this.onToggleOpenOnly,
+  });
+
+  final PlaceSearchQuery query;
+  final VoidCallback onOpenFilters;
+  final ValueChanged<SearchSort> onSortChanged;
+  final VoidCallback onToggleOpenOnly;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeCount = query.activeFilterCount;
+
+    return Container(
+      color: AppColors.surface,
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Row(
+          spacing: AppSpacing.sm,
+          children: [
+            OutlinedButton.icon(
+              onPressed: onOpenFilters,
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(0, 36),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.md,
+                ),
+              ),
+              icon: const Icon(Icons.tune, size: 18),
+              label: Text(activeCount == 0 ? '조건' : '조건 $activeCount'),
             ),
-        ],
+            FilterChip(
+              label: const Text('지금 운영중'),
+              selected: query.openOnly,
+              onSelected: (_) => onToggleOpenOnly(),
+            ),
+            for (final sort in SearchSort.values)
+              ChoiceChip(
+                label: Text(sort.label),
+                selected: query.sort == sort,
+                onSelected: (_) => onSortChanged(sort),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -179,72 +202,79 @@ class _PlaceCard extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(place.name, style: textTheme.titleMedium),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.sm,
-                    vertical: AppSpacing.xs,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Get.toNamed(AppRoutes.placeDetail(place.id)),
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(place.name, style: textTheme.titleMedium),
                   ),
-                  decoration: BoxDecoration(
-                    color: AppColors.brand50,
-                    borderRadius: BorderRadius.circular(AppRadius.control),
+                  const SizedBox(width: AppSpacing.sm),
+                  ScoreBadge(
+                    score: place.restScore,
+                    label: place.scoreLabel,
                   ),
-                  child: Text(
-                    '${place.restScore}점',
-                    style: const TextStyle(
-                      color: AppColors.brand700,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.xs),
+              Text(
+                [
+                  place.typeLabel,
+                  place.distanceLabel,
+                  place.priceLabel,
+                  if (place.openStatusLabel != null) place.openStatusLabel!,
+                ].where((part) => part.isNotEmpty).join(' · '),
+                style: textTheme.bodySmall,
+              ),
+              if (place.address.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(place.address, style: textTheme.bodyMedium),
+              ],
+              if (place.reasons.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.md),
+                Wrap(
+                  spacing: AppSpacing.sm,
+                  runSpacing: AppSpacing.xs,
+                  children: [
+                    for (final reason in place.reasons.take(3))
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.sm,
+                          vertical: AppSpacing.xs,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceMuted,
+                          borderRadius:
+                              BorderRadius.circular(AppRadius.control),
+                        ),
+                        child: Text(reason, style: textTheme.labelSmall),
+                      ),
+                  ],
                 ),
               ],
-            ),
-            const SizedBox(height: AppSpacing.xs),
-            Text(
-              [
-                place.typeLabel,
-                place.distanceLabel,
-                place.priceLabel,
-                if (place.openStatusLabel != null) place.openStatusLabel!,
-              ].where((part) => part.isNotEmpty).join(' · '),
-              style: textTheme.bodySmall,
-            ),
-            if (place.address.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.sm),
-              Text(place.address, style: textTheme.bodyMedium),
-            ],
-            if (place.reasons.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.md),
-              Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.xs,
+              Row(
                 children: [
-                  for (final reason in place.reasons.take(3))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.sm,
-                        vertical: AppSpacing.xs,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.surfaceMuted,
-                        borderRadius: BorderRadius.circular(AppRadius.control),
-                      ),
-                      child: Text(reason, style: textTheme.labelSmall),
+                  Expanded(
+                    child: Wrap(
+                      spacing: AppSpacing.sm,
+                      runSpacing: AppSpacing.xs,
+                      children: [
+                        for (final tag in place.tags.take(3)) AppBadge('#$tag'),
+                      ],
                     ),
+                  ),
+                  SavePlaceButton(placeId: place.id, compact: true),
                 ],
               ),
             ],
-          ],
+          ),
         ),
       ),
     );

@@ -82,4 +82,28 @@ void main() {
       );
     });
   });
+
+  group('validateNicknameChange', () {
+    test('닉네임 변경은 빈 값을 막는다', () {
+      // 서버 `UpdateNicknameRequest`가 @NotBlank + @Size(min = 2)입니다.
+      expect(AuthValidators.validateNicknameChange(''), '닉네임을 입력해 주세요.');
+      expect(AuthValidators.validateNicknameChange('   '), '닉네임을 입력해 주세요.');
+    });
+
+    test('2자 미만이면 막는다', () {
+      expect(
+        AuthValidators.validateNicknameChange('틈'),
+        '닉네임은 2자 이상 50자 이하로 입력해 주세요.',
+      );
+      expect(AuthValidators.validateNicknameChange('틈새'), isNull);
+    });
+
+    test('50자를 넘으면 막는다', () {
+      expect(AuthValidators.validateNicknameChange('가' * 50), isNull);
+      expect(
+        AuthValidators.validateNicknameChange('가' * 51),
+        '닉네임은 2자 이상 50자 이하로 입력해 주세요.',
+      );
+    });
+  });
 }
