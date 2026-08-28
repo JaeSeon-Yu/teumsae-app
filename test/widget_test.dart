@@ -12,6 +12,7 @@ import 'package:teumsae_app/src/features/auth/auth_user.dart';
 import 'package:teumsae_app/src/features/places/place_detail.dart';
 import 'package:teumsae_app/src/features/places/place_detail_controller.dart';
 import 'package:teumsae_app/src/features/places/place_map.dart';
+import 'package:teumsae_app/src/features/places/place_review.dart';
 import 'package:teumsae_app/src/features/places/place_search_query.dart';
 import 'package:teumsae_app/src/features/places/place_summary.dart';
 import 'package:teumsae_app/src/features/places/places_controller.dart';
@@ -29,7 +30,7 @@ import 'package:teumsae_app/src/widgets/score_badge.dart';
 
 /// 검색은 항상 서버를 호출하므로 목록만 돌려주는 대역으로 바꿉니다.
 class _StubPlacesRepository extends PlacesRepository {
-  _StubPlacesRepository(this.stubbed)
+  _StubPlacesRepository(this.stubbed, {this.reviews = const []})
       : super(ApiClient(tokenStore: InMemoryTokenStore()));
 
   final List<PlaceSummary> stubbed;
@@ -61,7 +62,50 @@ class _StubPlacesRepository extends PlacesRepository {
         'openingHoursText': '평일 09:00-18:00',
         'warnings': ['음식물 반입 금지'],
         'tags': ['조용함'],
+        'reviewCount': reviews.length,
+        'reviews': reviews,
+        'averageRating': reviews.isEmpty
+            ? null
+            : reviews
+                    .map((review) => review['rating'] as int)
+                    .reduce((a, b) => a + b) /
+                reviews.length,
       });
+
+  /// 상세 응답에 실어 보낼 후기. 작성·삭제가 이 목록을 바꿉니다.
+  List<Map<String, dynamic>> reviews;
+
+  ({int rating, String comment})? lastCreatedReview;
+
+  @override
+  Future<PlaceReview> createReview({
+    required int placeId,
+    required int rating,
+    required String comment,
+  }) async {
+    lastCreatedReview = (rating: rating, comment: comment);
+    final created = {
+      'id': 100,
+      'userId': 1,
+      'username': 'tester',
+      'rating': rating,
+      'comment': comment,
+      'createdAt': '2026-08-28T23:04:11.123',
+    };
+    // 서버는 최신순으로 돌려줍니다.
+    reviews = [created, ...reviews];
+    return PlaceReview.fromJson(created);
+  }
+
+  @override
+  Future<void> deleteReview({
+    required int placeId,
+    required int reviewId,
+  }) async {
+    reviews = reviews
+        .where((review) => review['id'] != reviewId)
+        .toList(growable: false);
+  }
 }
 
 /// 저장 목록도 서버를 호출하므로 메모리 목록으로 바꿉니다.
@@ -196,6 +240,7 @@ Future<void> _pumpApp(
   bool signedIn = false,
   List<int> savedIds = const [],
   LocationService? location,
+  List<Map<String, dynamic>> reviews = const [],
 }) async {
   Get.testMode = true;
 
@@ -210,7 +255,10 @@ Future<void> _pumpApp(
   );
   Get.put<AuthController>(AuthController(Get.find()), permanent: true);
   // ShellController와 PlacesController는 ShellBinding이 만들어 줍니다.
-  Get.put<PlacesRepository>(_StubPlacesRepository(places), permanent: true);
+  Get.put<PlacesRepository>(
+    _StubPlacesRepository(places, reviews: reviews),
+    permanent: true,
+  );
   // 실제 구현은 플랫폼 채널을 타므로 테스트에서는 고정 좌표를 씁니다.
   Get.put<LocationService>(
     location ?? const FixedLocationService(UserLocation(lat: 37.5, lng: 127.1)),
@@ -256,6 +304,23 @@ Future<void> _scrollSheetTo(WidgetTester tester, Finder target) {
     scrollable: find
         .descendant(
           of: find.byType(SearchFiltersSheet),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
+}
+
+/// 상세 화면 본문을 스크롤합니다.
+///
+/// 후기 작성 폼의 `TextField`도 내부에 Scrollable을 만들기 때문에
+/// 기본 `scrollUntilVisible`은 어느 것을 굴릴지 정하지 못합니다.
+Future<void> _scrollDetailTo(WidgetTester tester, Finder target) {
+  return tester.scrollUntilVisible(
+    target,
+    300,
+    scrollable: find
+        .descendant(
+          of: find.byType(ListView),
           matching: find.byType(Scrollable),
         )
         .first,
@@ -576,6 +641,23 @@ void main() {
       await tester.pumpAndSettle();
     }
 
+    /// 후기 구역은 화면 밖에 있어 먼저 스크롤해야 만들어집니다.
+    Future<void> openReviews(
+      WidgetTester tester, {
+      bool signedIn = false,
+      List<Map<String, dynamic>> reviews = const [],
+    }) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: signedIn,
+        reviews: reviews,
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollDetailTo(tester, find.text('방문자 후기'));
+    }
+
     testWidgets('서버가 준 정보를 구역별로 보여준다', (tester) async {
       await openDetail(tester);
 
@@ -623,6 +705,164 @@ void main() {
 
       expect(Get.find<SavedController>().isSaved(samplePlace.id), isTrue);
       expect(find.widgetWithText(FilledButton, '저장됨'), findsOneWidget);
+    });
+
+    testWidgets('로그아웃 상태에서는 후기 대신 로그인을 안내한다', (tester) async {
+      await openReviews(tester);
+
+      expect(find.text('로그인하면 후기와 평점을 남길 수 있습니다.'), findsOneWidget);
+      expect(find.text('아직 후기가 없습니다.'), findsOneWidget);
+      expect(find.text('평점 없음'), findsOneWidget);
+      // 작성 폼은 보이지 않습니다.
+      expect(find.widgetWithText(FilledButton, '후기 등록'), findsNothing);
+    });
+
+    testWidgets('서버가 준 후기와 평균 별점을 보여준다', (tester) async {
+      await openReviews(
+        tester,
+        reviews: const [
+          {
+            'id': 5,
+            'userId': 99,
+            'username': 'someone',
+            'rating': 4,
+            'comment': '조용해서 좋았어요',
+            'createdAt': '2026-08-28T23:04:11.123',
+          },
+        ],
+      );
+
+      expect(find.text('someone'), findsOneWidget);
+      expect(find.text('조용해서 좋았어요'), findsOneWidget);
+      expect(find.text('2026.08.28'), findsOneWidget);
+      expect(find.text('4.0 / 5.0'), findsOneWidget);
+      expect(find.text('(1개)'), findsOneWidget);
+    });
+
+    testWidgets('로그인 상태에서 후기를 등록하면 목록에 나타난다', (tester) async {
+      await openReviews(tester, signedIn: true);
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      await tester.enterText(find.byType(TextField), '조용하고 좋았어요');
+      final submitButton = find.widgetWithText(FilledButton, '후기 등록');
+      await tester.ensureVisible(submitButton);
+      await tester.pumpAndSettle();
+      await tester.tap(submitButton);
+      await tester.pumpAndSettle();
+
+      // 별점은 기본값 5점으로 보냅니다.
+      expect(repository.lastCreatedReview?.rating, 5);
+      expect(repository.lastCreatedReview?.comment, '조용하고 좋았어요');
+      await _scrollDetailTo(tester, find.text('조용하고 좋았어요'));
+      expect(find.text('조용하고 좋았어요'), findsOneWidget);
+    });
+
+    testWidgets('별점을 골라서 등록할 수 있다', (tester) async {
+      await openReviews(tester, signedIn: true);
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      // 폼의 별 버튼 중 세 번째를 누릅니다.
+      await tester.tap(find.byTooltip('3점'));
+      await tester.pump();
+      await tester.enterText(find.byType(TextField), '보통이었어요');
+      final submitButton = find.widgetWithText(FilledButton, '후기 등록');
+      await tester.ensureVisible(submitButton);
+      await tester.pumpAndSettle();
+      await tester.tap(submitButton);
+      await tester.pumpAndSettle();
+
+      expect(repository.lastCreatedReview?.rating, 3);
+    });
+
+    testWidgets('빈 후기는 서버를 부르지 않고 막는다', (tester) async {
+      await openReviews(tester, signedIn: true);
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      final submitButton = find.widgetWithText(FilledButton, '후기 등록');
+      await tester.ensureVisible(submitButton);
+      await tester.pumpAndSettle();
+      await tester.tap(submitButton);
+      await tester.pumpAndSettle();
+
+      expect(repository.lastCreatedReview, isNull);
+      await tester.ensureVisible(find.text('후기 내용을 입력해 주세요.'));
+      expect(find.text('후기 내용을 입력해 주세요.'), findsOneWidget);
+    });
+
+    testWidgets('내 후기만 삭제 버튼을 보여준다', (tester) async {
+      // 로그인한 테스트 사용자의 id는 1입니다.
+      await openReviews(
+        tester,
+        signedIn: true,
+        reviews: const [
+          {
+            'id': 5,
+            'userId': 1,
+            'username': 'teumsae_user',
+            'rating': 5,
+            'comment': '내가 쓴 후기',
+            'createdAt': '2026-08-28T23:04:11.123',
+          },
+          {
+            'id': 6,
+            'userId': 99,
+            'username': 'someone',
+            'rating': 3,
+            'comment': '남이 쓴 후기',
+            'createdAt': '2026-08-27T10:00:00.000',
+          },
+        ],
+      );
+
+      // 서버도 본인 후기만 삭제를 허용합니다. 지울 수 없는 버튼을 보여 주고
+      // 403을 받게 하지 않습니다.
+      await _scrollDetailTo(tester, find.text('남이 쓴 후기'));
+      expect(find.widgetWithText(TextButton, '삭제'), findsOneWidget);
+    });
+
+    testWidgets('후기 삭제는 한 번 더 확인한다', (tester) async {
+      await openReviews(
+        tester,
+        signedIn: true,
+        reviews: const [
+          {
+            'id': 5,
+            'userId': 1,
+            'username': 'teumsae_user',
+            'rating': 5,
+            'comment': '내가 쓴 후기',
+            'createdAt': '2026-08-28T23:04:11.123',
+          },
+        ],
+      );
+
+      final tileDeleteButton = find.widgetWithText(TextButton, '삭제');
+      final dialogDeleteButton = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextButton, '삭제'),
+      );
+
+      await tester.ensureVisible(tileDeleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(tileDeleteButton);
+      await tester.pumpAndSettle();
+      expect(find.text('후기를 삭제할까요?'), findsOneWidget);
+
+      // 취소하면 남아 있습니다.
+      await tester.tap(find.widgetWithText(TextButton, '취소'));
+      await tester.pumpAndSettle();
+      expect(find.text('내가 쓴 후기'), findsOneWidget);
+
+      await tester.ensureVisible(tileDeleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(tileDeleteButton);
+      await tester.pumpAndSettle();
+      await tester.tap(dialogDeleteButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('내가 쓴 후기'), findsNothing);
+      await _scrollDetailTo(tester, find.text('아직 후기가 없습니다.'));
+      expect(find.text('아직 후기가 없습니다.'), findsOneWidget);
     });
   });
 

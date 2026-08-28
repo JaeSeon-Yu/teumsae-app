@@ -95,7 +95,7 @@ lib/
     features/
       shell/                       하단 탭 셸(ShellController · ShellTab · MainShell)
       auth/                        AuthController(GetxController) · 리포지토리 · 검증 · 화면
-      places/                      검색·상세 (컨트롤러 · 모델 · 표시 규칙 · 화면)
+      places/                      검색·상세·지도·후기 (컨트롤러 · 모델 · 표시 규칙 · 화면)
       saved/                       저장 목록 (SavedController · 저장 버튼 · 저장 탭)
       account/                     내 정보 탭 · 계정 설정 (SettingsController)
     widgets/
@@ -117,6 +117,8 @@ lib/
 | `operating_hours.dart` | 자유 형식 `openingHoursText` 파싱 |
 | `search_filters_sheet.dart` | 검색 조건 바텀시트 (웹 `SearchFilters`) |
 | `place_map.dart` | 지도 위젯 자리(`PlaceMapBuilder`) + 네이버 지도 구현 |
+| `place_review.dart` | 후기 한 건 + 입력 검증(`ReviewValidators`) |
+| `place_reviews_section.dart` | 방문자 후기 구역 (목록 · 작성 · 삭제) |
 
 ### 화면 구조
 
@@ -171,6 +173,8 @@ lib/
 | 로그아웃 | `POST /api/auth/token/logout` |
 | 검색 | `GET /api/places/search` (로그인 불필요) |
 | 장소 상세 | `GET /api/places/{id}` (로그인 불필요, 비로그인은 `saved=false`) |
+| 후기 작성 | `POST /api/places/{id}/reviews` (201) |
+| 후기 삭제 | `DELETE /api/places/{id}/reviews/{reviewId}` (204) |
 | 저장 목록 | `GET /api/saved-places` |
 | 저장 / 저장 취소 | `POST` / `DELETE /api/saved-places/{placeId}` (204) |
 | 닉네임 변경 | `PATCH /api/auth/nickname` |
@@ -212,7 +216,7 @@ lib/
 4. ~~설정~~ (완료: 닉네임·비밀번호 변경, 회원 탈퇴)
 5. ~~검색 필터 전체~~ (완료: 조건 시트 · 정렬 · 영업중 토글)
 6. ~~위치 권한 + 현재 위치 검색~~ (완료: 검색 바의 "내 위치" 토글)
-7. 리뷰 (`/api/places/{id}/reviews`)
+7. ~~리뷰~~ (완료: 상세 화면의 방문자 후기 · 작성 · 삭제)
 8. ~~지도 (검색 결과 · 상세)~~ (완료: 네이버 지도 · `flutter_naver_map`)
 9. 장소 등록·수정 + 내가 등록한 장소
 10. 소셜 로그인 (Firebase Google/Apple)
@@ -261,6 +265,24 @@ lib/
   영구 거부는 웹에 없는 앱 전용 상황이라 별도 문구를 씁니다.
 - "내 위치"는 조건 시트 밖에 있어 누르는 즉시 검색하고, 활성 개수 배지에도 세지 않습니다.
   (테마·정렬·운영중과 같은 취급)
+
+### 후기
+
+상세 화면 안에 있습니다. 목록·작성·삭제가 한 구역(`place_reviews_section.dart`)입니다.
+
+- **후기 목록 조회 엔드포인트는 없습니다.** `GET /api/places/{id}`가 상세 응답에
+  `reviews`로 함께 내려줍니다. 그래서 앱도 상세를 받을 때 같이 채웁니다.
+- 작성·삭제 뒤에는 상세를 다시 불러옵니다. 평균 별점과 후기 수를 서버가
+  계산하므로(`PlaceService`) 화면에서 더하면 서버 값과 어긋납니다.
+  웹은 화면에서 평균을 다시 계산하지만 앱은 서버 값을 그대로 씁니다.
+- 삭제 버튼은 내 후기이거나 관리자일 때만 보입니다. 서버도 같은 조건으로 막으므로
+  (`PlaceReviewController.deleteReview`) 누를 수 없는 버튼을 보여 주고 403을
+  받게 하지 않습니다.
+- 입력 규칙은 `ReviewValidators`가 서버 `CreateReviewRequest`와 같은 값을 씁니다.
+  (평점 1~5, 후기 1~1000자) 빈 후기는 서버를 부르지 않고 막습니다.
+- 신고·차단은 넣지 않았습니다. 공개 프로필과 함께 가는 기능이라 이식 순서에서
+  뒤에 있습니다. (웹 후기 목록에는 있습니다)
+- 로그인하지 않으면 작성 폼 대신 로그인 안내를 띄웁니다. (저장 버튼과 같은 규칙)
 
 ### 지도
 
@@ -319,7 +341,7 @@ lib/
 
 ## 아직 하지 않은 것
 
-- 장소 등록·수정, 후기, 소셜/Firebase 로그인. (위 이식 순서 참고)
+- 장소 등록·수정, 소셜/Firebase 로그인, 공개 프로필·차단·신고. (위 이식 순서 참고)
 - 내 정보 탭의 저장·등록 개수 카드: 등록 장소 기능과 함께 넣는 편이 낫습니다.
 - 다크 테마: 웹에도 다크 토큰이 없어 함께 정의한 뒤 옮기는 편이 낫습니다.
 - Pretendard 폰트 에셋: 현재는 플랫폼 기본 한글 폰트를 씁니다.

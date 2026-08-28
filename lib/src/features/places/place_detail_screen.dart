@@ -11,6 +11,7 @@ import 'operating_hours.dart';
 import 'place_detail.dart';
 import 'place_detail_controller.dart';
 import 'place_map.dart';
+import 'place_reviews_section.dart';
 
 /// 장소 상세. 웹 `/places/[id]`에 대응합니다.
 ///
@@ -104,6 +105,8 @@ class _DetailBody extends StatelessWidget {
             ),
           ),
         ],
+        const SizedBox(height: AppSpacing.md),
+        PlaceReviewsSection(place: place),
         const SizedBox(height: AppSpacing.md),
         _LocationSection(place: place),
         if (place.source != null || place.sourceUrl != null) ...[
@@ -514,21 +517,18 @@ class _LocationSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              // 길찾기는 네이버 지도 앱이 훨씬 잘합니다. 앱이 없으면 브라우저가 받습니다.
-              // 웹 상세 화면도 같은 주소로 보냅니다.
-              onPressed: () => launchUrl(
-                Uri.parse(
-                  'https://map.naver.com/p/search/'
-                  '${Uri.encodeComponent(place.name)}',
-                ),
-                mode: LaunchMode.externalApplication,
+          OutlinedButton.icon(
+            // 길찾기는 네이버 지도 앱이 훨씬 잘합니다. 앱이 없으면 브라우저가 받습니다.
+            // 웹 상세 화면도 같은 주소로 보냅니다.
+            onPressed: () => launchUrl(
+              Uri.parse(
+                'https://map.naver.com/p/search/'
+                '${Uri.encodeComponent(place.name)}',
               ),
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('네이버 지도에서 보기'),
+              mode: LaunchMode.externalApplication,
             ),
+            icon: const Icon(Icons.open_in_new, size: 18),
+            label: const Text('네이버 지도에서 보기'),
           ),
         ],
       ),

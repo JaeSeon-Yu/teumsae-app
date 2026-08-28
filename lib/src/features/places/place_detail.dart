@@ -1,4 +1,5 @@
 import 'place_format.dart';
+import 'place_review.dart';
 
 /// 서버 `PlaceFacilityScores`. 각 항목 0~5점.
 class PlaceFacilityScores {
@@ -99,6 +100,7 @@ class PlaceDetail {
     required this.saved,
     required this.userCreated,
     required this.reviewCount,
+    required this.reviews,
     this.estimatedCostMin,
     this.estimatedCostMax,
     this.openingHoursText,
@@ -134,6 +136,9 @@ class PlaceDetail {
 
   final bool userCreated;
   final int reviewCount;
+
+  /// 최신순으로 서버가 정렬해 줍니다. (`findByPlaceIdOrderByCreatedAtDesc`)
+  final List<PlaceReview> reviews;
   final int? estimatedCostMin;
   final int? estimatedCostMax;
   final String? openingHoursText;
@@ -168,6 +173,7 @@ class PlaceDetail {
       saved: json['saved'] as bool? ?? false,
       userCreated: json['userCreated'] as bool? ?? false,
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,
+      reviews: _reviewList(json['reviews']),
       estimatedCostMin: (json['estimatedCostMin'] as num?)?.toInt(),
       estimatedCostMax: (json['estimatedCostMax'] as num?)?.toInt(),
       openingHoursText: _trimmedOrNull(json['openingHoursText']),
@@ -194,6 +200,16 @@ class PlaceDetail {
   static List<String> _stringList(Object? value) {
     if (value is List) {
       return value.whereType<String>().toList(growable: false);
+    }
+    return const [];
+  }
+
+  static List<PlaceReview> _reviewList(Object? value) {
+    if (value is List) {
+      return value
+          .whereType<Map<String, dynamic>>()
+          .map(PlaceReview.fromJson)
+          .toList(growable: false);
     }
     return const [];
   }
