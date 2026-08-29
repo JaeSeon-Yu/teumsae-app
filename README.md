@@ -421,7 +421,20 @@ lib/
 
 ## 아직 하지 않은 것
 
-- 소셜/Firebase 로그인. (위 이식 순서 참고)
+- 소셜/Firebase 로그인. (위 이식 순서 참고) 아래 준비물이 있어야 시작할 수 있습니다.
+  - 서버는 이미 받을 준비가 돼 있습니다. `POST /api/auth/token/social`
+    (`provider` + `idToken`)과 `POST /api/auth/token/firebase`(`idToken`)이 있고,
+    `ApiClient._publicPaths`에도 두 경로가 들어 있습니다. 앱에 없는 것은
+    **idToken을 받아 오는 부분**입니다.
+  - 웹은 Firebase 프로젝트 `teum-sae`를 씁니다. 앱도 같은 프로젝트를 쓰려면
+    그 프로젝트에 Android(`kr.co.jason.teumsae`)와 iOS(같은 Bundle ID) 앱을
+    등록해 `google-services.json`·`GoogleService-Info.plist`를 받아야 합니다.
+    (둘 다 아직 없습니다)
+  - Android 구글 로그인은 서명 키 SHA-1을 Firebase에 등록해야 합니다.
+    디버그 키는 `77:1B:71:2D:89:C8:17:62:58:14:4A:D0:D6:D6:32:99:79:36:B4:75`이고,
+    출시용은 릴리스 키스토어에서 따로 뽑아야 합니다.
+  - Apple 로그인은 유료 Apple Developer 계정에서 Sign in with Apple 권한을
+    켜야 합니다. Xcode 서명 설정도 함께 손봐야 합니다.
 - 등록 폼의 요일별 운영시간: 앱은 24시간·시간 범위·직접 입력만 만들 수 있습니다.
   (웹 `OperatingHoursForm`처럼 요일 그룹을 짜는 UI는 좁은 화면에서 입력 부담이 큽니다)
 - 다크 테마: 웹에도 다크 토큰이 없어 함께 정의한 뒤 옮기는 편이 낫습니다.
