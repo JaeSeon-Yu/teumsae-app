@@ -36,6 +36,10 @@ migrate_working_dir/
 # Symbolication related
 app.*.symbols
 
+# 빌드 시 주입하는 설정. 키가 들어가므로 커밋하지 않습니다.
+# (dart_define.example.json을 복사해 채웁니다)
+dart_define.json
+
 # Obfuscation related
 app.*.map.json
 

@@ -18,29 +18,38 @@
 export PATH="$HOME/flutter-sdks/3.41.2/flutter/bin:$PATH"
 ```
 
-API 서버 주소는 `--dart-define`으로 넣습니다. 넣지 않으면 운영 서버를 가리킵니다.
-네이버 지도 Client ID도 같은 방식으로 넣습니다. 없으면 지도 자리에 안내 문구가
-뜨고 나머지 기능은 그대로 동작합니다.
+API 서버 주소와 네이버 지도 Client ID는 빌드 시 주입합니다. 매번 플래그를 쓰지 않도록
+`dart_define.example.json`을 복사해 `dart_define.json`을 만들고 값을 채웁니다.
+(`dart_define.json`은 커밋하지 않습니다)
 
 ```bash
 flutter pub get
+cp dart_define.example.json dart_define.json   # 처음 한 번
 
+flutter run --dart-define-from-file=dart_define.json
+```
+
+플래그로 직접 넘길 수도 있습니다. 넣지 않으면 API는 운영 서버를 가리키고,
+지도는 자리에 안내 문구가 뜬 채 나머지 기능은 그대로 동작합니다.
+
+```bash
 # 로컬 서버 (Android 에뮬레이터는 10.0.2.2가 호스트의 localhost입니다)
 flutter run \
   --dart-define=TEUMSAE_API_BASE_URL=http://10.0.2.2:8080 \
   --dart-define=TEUMSAE_NAVER_MAP_CLIENT_ID=발급받은_클라이언트_ID
-
-# iOS 시뮬레이터
-flutter run \
-  --dart-define=TEUMSAE_API_BASE_URL=http://localhost:8080 \
-  --dart-define=TEUMSAE_NAVER_MAP_CLIENT_ID=발급받은_클라이언트_ID
 ```
 
-지도 키는 웹(`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`)과 **같은 값을 쓸 수 없습니다.**
-NCP 콘솔 > Services > Application Services > Maps에서 Application을 만들고
-**Mobile Dynamic Map**을 켠 뒤, Android 패키지 이름과 iOS Bundle ID에
-`kr.co.jason.teumsae`를 등록해야 그 Application의 Client ID가 앱에서 통합니다.
-(등록된 앱 식별자가 없으면 SDK가 인증을 거부합니다)
+지도 키는 NCP 콘솔 > Services > Application Services > Maps의 Application에서 받습니다.
+**Mobile Dynamic Map**을 켜고 Android 패키지 이름과 iOS Bundle ID에
+`kr.co.jason.teumsae`를 등록해야 앱에서 통합니다. 등록하지 않은 키를 쓰면 SDK가
+인증을 거부합니다. (초기화 시 `401`)
+
+웹(`NEXT_PUBLIC_NAVER_MAP_CLIENT_ID`)과 같은 값을 쓸 수 있습니다. 한 Application에
+웹 Referer와 모바일 앱 식별자를 함께 등록하면 됩니다. 지금 쓰는 키가 그렇게 등록돼
+있어서 웹·앱이 같은 Client ID를 공유합니다.
+
+Client **Secret**은 앱에 넣지 않습니다. 서버측 REST API(Geocoding·Directions)
+인증용이고, 앱 바이너리에 넣으면 그대로 추출됩니다.
 
 ## 검증
 
@@ -48,6 +57,17 @@ NCP 콘솔 > Services > Application Services > Maps에서 Application을 만들�
 flutter analyze
 flutter test
 ```
+
+지도 인증은 위젯 테스트로 확인할 수 없습니다. 플랫폼 뷰라 실기기·시뮬레이터에서만
+그려지고 인증도 그때 이뤄집니다. Client ID가 통하는지 보려면 기기를 붙여서 돌립니다.
+
+```bash
+flutter test integration_test/map_auth_test.dart \
+  -d <device-id> --dart-define-from-file=dart_define.json
+```
+
+등록되지 않은 키로 돌리면 `네이버 지도 인증에 실패했습니다. (401)`로 떨어집니다.
+플랫폼별로 등록이 따로라 Android·iOS 양쪽에서 확인하는 편이 좋습니다.
 
 ### Android 빌드: SDK platform 이름 불일치
 
@@ -295,8 +315,9 @@ lib/
 - SDK 초기화는 `MapBootstrap`이 `runApp` 전에 한 번 합니다. 키가 없거나 인증이
   거부되면 예외를 던지지 않고 이유만 남깁니다. 지도를 못 써도 검색·저장은
   계속 써야 하기 때문입니다. 지도 자리에는 그 이유가 안내 문구로 뜹니다.
-- 인증 방식은 NCP의 새 방식(`FlutterNaverMap().init`)을 씁니다.
-  웹은 아직 구 방식(`oapi.map.naver.com` + `ncpClientId`)이라 키를 공유할 수 없습니다.
+- 인증 방식은 NCP의 새 방식(`FlutterNaverMap().init`)을 씁니다. 웹은 아직 구 방식
+  (`oapi.map.naver.com` + `ncpClientId`)이지만 Client ID 자체는 같은 것을 씁니다.
+  한 Application에 웹 Referer와 앱 식별자가 함께 등록돼 있습니다.
 - 목록 ↔ 지도 전환은 재검색하지 않습니다. 같은 결과를 다르게 보는 것뿐입니다.
 - 지도를 옮기면 바로 검색하지 않고 "이 지역 재검색" 버튼을 띄웁니다. 손을 뗄 때마다
   검색하면 요청이 계속 나가고 결과가 흔들립니다. 웹도 이동과 재검색을 분리해 둡니다.
