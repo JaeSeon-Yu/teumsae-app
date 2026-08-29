@@ -9,6 +9,7 @@ import '../features/places/my_places_screen.dart';
 import '../features/places/place_detail_screen.dart';
 import '../features/places/place_form_screen.dart';
 import '../features/shell/main_shell.dart';
+import '../features/users/user_profile_screen.dart';
 import 'app_routes.dart';
 
 /// 이미 로그인한 사용자가 로그인·회원가입 화면으로 가는 것을 되돌립니다.
@@ -82,6 +83,11 @@ abstract final class AppPages {
       page: () => const MyPlacesScreen(),
       binding: MyPlacesBinding(),
       middlewares: [RequireSignInMiddleware()],
+    ),
+    GetPage(
+      name: AppRoutes.userProfilePattern,
+      page: () => const UserProfileScreen(),
+      binding: UserProfileBinding(),
     ),
     GetPage(
       name: AppRoutes.settings,

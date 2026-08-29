@@ -12,6 +12,9 @@ import '../../features/places/places_repository.dart';
 import '../../features/saved/saved_controller.dart';
 import '../../features/saved/saved_repository.dart';
 import '../../features/shell/shell_controller.dart';
+import '../../features/users/block_controller.dart';
+import '../../features/users/user_profile_controller.dart';
+import '../../features/users/users_repository.dart';
 import '../network/api_client.dart';
 import '../location/location_service.dart';
 import '../storage/token_store.dart';
@@ -72,6 +75,20 @@ class InitialBinding extends Bindings {
 
     Get.put<SavedRepository>(
       SavedRepository(Get.find<ApiClient>()),
+      permanent: true,
+    );
+
+    Get.put<UsersRepository>(
+      UsersRepository(Get.find<ApiClient>()),
+      permanent: true,
+    );
+
+    // 차단 상태는 후기 목록과 공개 프로필이 함께 봐야 해서 앱 전체에 하나만 둡니다.
+    Get.put<BlockController>(
+      BlockController(
+        repository: Get.find<UsersRepository>(),
+        auth: Get.find<AuthController>(),
+      ),
       permanent: true,
     );
 
@@ -142,6 +159,19 @@ class MyPlacesBinding extends Bindings {
   void dependencies() {
     Get.lazyPut<MyPlacesController>(
       () => MyPlacesController(Get.find<PlacesRepository>()),
+    );
+  }
+}
+
+/// 공개 프로필(`/users/:username`) 진입 시 만듭니다.
+class UserProfileBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<UserProfileController>(
+      () => UserProfileController(
+        repository: Get.find<UsersRepository>(),
+        username: Get.parameters['username'] ?? '',
+      ),
     );
   }
 }

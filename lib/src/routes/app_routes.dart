@@ -26,6 +26,13 @@ abstract final class AppRoutes {
   /// 내가 등록한 장소. 로그인이 필요합니다.
   static const myPlaces = '/account/places';
 
+  /// 공개 프로필. 로그인 없이도 볼 수 있습니다.
+  /// 등록에 쓰는 패턴이라 이동할 때는 [userProfile]을 쓰세요.
+  static const userProfilePattern = '/users/:username';
+
+  static String userProfile(String username) =>
+      '/users/${Uri.encodeComponent(username)}';
+
   /// 계정 설정. 로그인이 필요합니다.
   static const settings = '/settings';
 }

@@ -26,6 +26,9 @@ import 'package:teumsae_app/src/features/saved/saved_controller.dart';
 import 'package:teumsae_app/src/features/saved/saved_place.dart';
 import 'package:teumsae_app/src/features/saved/saved_repository.dart';
 import 'package:teumsae_app/src/features/shell/shell_controller.dart';
+import 'package:teumsae_app/src/features/users/block_controller.dart';
+import 'package:teumsae_app/src/features/users/user_profile.dart';
+import 'package:teumsae_app/src/features/users/users_repository.dart';
 import 'package:teumsae_app/src/features/shell/shell_tab.dart';
 import 'package:teumsae_app/src/routes/app_pages.dart';
 import 'package:teumsae_app/src/routes/app_routes.dart';
@@ -142,6 +145,55 @@ class _StubPlacesRepository extends PlacesRepository {
   @override
   Future<String?> reverseGeocode(double lat, double lng) async =>
       '서울 성북구 화랑로 123';
+}
+
+/// 차단·신고도 서버를 호출하므로 메모리로 바꿉니다.
+class _StubUsersRepository extends UsersRepository {
+  _StubUsersRepository({Set<int>? blockedIds, this.profile})
+      : _blocked = {...?blockedIds},
+        super(ApiClient(tokenStore: InMemoryTokenStore()));
+
+  final Set<int> _blocked;
+
+  /// 공개 프로필 응답. 없으면 기본값을 만들어 줍니다.
+  final Map<String, dynamic>? profile;
+
+  ({String target, int id, String reason})? lastReport;
+
+  @override
+  Future<Set<int>> blockedUserIds() async => {..._blocked};
+
+  @override
+  Future<void> block(int userId) async => _blocked.add(userId);
+
+  @override
+  Future<void> unblock(int userId) async => _blocked.remove(userId);
+
+  @override
+  Future<void> report({
+    required ReportTarget target,
+    required int targetId,
+    required String reason,
+    String? details,
+  }) async {
+    lastReport = (target: target.value, id: targetId, reason: reason);
+  }
+
+  @override
+  Future<UserProfile> getProfile(String username) async {
+    return UserProfile.fromJson(
+      profile ??
+          {
+            'id': 99,
+            'username': username,
+            'createdAt': '2026-01-02T10:00:00.000',
+            'registeredPlacesCount': 0,
+            'reviewsCount': 0,
+            'registeredPlaces': <Map<String, dynamic>>[],
+            'reviews': <Map<String, dynamic>>[],
+          },
+    );
+  }
 }
 
 /// 저장 목록도 서버를 호출하므로 메모리 목록으로 바꿉니다.
@@ -294,6 +346,8 @@ Future<void> _pumpApp(
   List<int> savedIds = const [],
   LocationService? location,
   List<Map<String, dynamic>> reviews = const [],
+  Set<int> blockedIds = const {},
+  Map<String, dynamic>? profile,
 }) async {
   Get.testMode = true;
 
@@ -324,6 +378,14 @@ Future<void> _pumpApp(
   );
   Get.put<SavedController>(
     SavedController(repository: Get.find(), auth: Get.find()),
+    permanent: true,
+  );
+  Get.put<UsersRepository>(
+    _StubUsersRepository(blockedIds: blockedIds, profile: profile),
+    permanent: true,
+  );
+  Get.put<BlockController>(
+    BlockController(repository: Get.find(), auth: Get.find()),
     permanent: true,
   );
 
@@ -1065,6 +1127,225 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(Get.currentRoute, AppRoutes.myPlaces);
+    });
+  });
+
+  group('공개 프로필', () {
+    testWidgets('로그인 없이도 프로필을 볼 수 있다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.userProfile('jason'),
+        profile: const {
+          'id': 99,
+          'username': 'jason',
+          'createdAt': '2026-01-02T10:00:00.000',
+          'registeredPlacesCount': 1,
+          'reviewsCount': 1,
+          'registeredPlaces': [
+            {'id': 3, 'name': '성북구립도서관', 'typeLabel': '도서관'},
+          ],
+          'reviews': [
+            {
+              'id': 5,
+              'placeId': 3,
+              'placeName': '성북구립도서관',
+              'rating': 4,
+              'comment': '조용해요',
+              'createdAt': '2026-08-28T23:04:11.123',
+            },
+          ],
+        },
+      );
+
+      expect(find.text('jason'), findsOneWidget);
+      expect(find.text('2026년 1월 2일 가입'), findsOneWidget);
+      expect(find.text('등록한 틈새 (1)'), findsOneWidget);
+      expect(find.text('작성한 후기 (1)'), findsOneWidget);
+      expect(find.text('조용해요'), findsOneWidget);
+      // 로그인하지 않으면 차단·신고를 보여 주지 않습니다.
+      expect(find.text('이 사용자 차단'), findsNothing);
+    });
+
+    testWidgets('로그인하면 차단·신고를 보여준다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.userProfile('jason'),
+        signedIn: true,
+      );
+
+      expect(find.text('이 사용자 차단'), findsOneWidget);
+      expect(find.text('이 사용자 신고'), findsOneWidget);
+    });
+
+    testWidgets('차단하면 안내와 해제 버튼으로 바뀐다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.userProfile('jason'),
+        signedIn: true,
+      );
+
+      await tester.tap(find.text('이 사용자 차단'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '차단'));
+      await tester.pumpAndSettle();
+
+      expect(Get.find<BlockController>().isBlocked(99), isTrue);
+      expect(find.text('차단한 사용자입니다.'), findsOneWidget);
+      expect(find.text('차단 해제'), findsOneWidget);
+    });
+
+    testWidgets('신고 사유를 적어 보낸다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.userProfile('jason'),
+        signedIn: true,
+      );
+      final repository = Get.find<UsersRepository>() as _StubUsersRepository;
+
+      await tester.tap(find.text('이 사용자 신고'));
+      await tester.pumpAndSettle();
+      // 자주 쓰는 사유를 눌러 채울 수 있습니다.
+      await tester.tap(find.widgetWithText(ActionChip, '스팸'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '신고하기'));
+      await tester.pumpAndSettle();
+
+      expect(repository.lastReport?.target, 'USER');
+      expect(repository.lastReport?.id, 99);
+      expect(repository.lastReport?.reason, '스팸');
+
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('빈 사유는 시트에서 막는다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.userProfile('jason'),
+        signedIn: true,
+      );
+      final repository = Get.find<UsersRepository>() as _StubUsersRepository;
+
+      await tester.tap(find.text('이 사용자 신고'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, '신고하기'));
+      await tester.pumpAndSettle();
+
+      expect(repository.lastReport, isNull);
+      expect(find.text('신고 사유를 입력해 주세요.'), findsOneWidget);
+    });
+  });
+
+  group('후기 신고·차단', () {
+    const othersReview = {
+      'id': 6,
+      'userId': 99,
+      'username': 'someone',
+      'rating': 3,
+      'comment': '남이 쓴 후기',
+      'createdAt': '2026-08-27T10:00:00.000',
+    };
+
+    testWidgets('작성자 이름을 누르면 공개 프로필로 간다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        reviews: const [othersReview],
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollListTo(tester, find.text('someone'));
+      await tester.ensureVisible(find.text('someone'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('someone'));
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.userProfile('someone'));
+    });
+
+    testWidgets('남의 후기는 신고·차단 메뉴를 보여준다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: true,
+        reviews: const [othersReview],
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollListTo(tester, find.text('남이 쓴 후기'));
+      await tester.ensureVisible(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      expect(find.text('신고'), findsOneWidget);
+      expect(find.text('차단'), findsOneWidget);
+    });
+
+    testWidgets('차단하면 그 사용자의 후기가 목록에서 사라진다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: true,
+        reviews: const [othersReview],
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollListTo(tester, find.text('남이 쓴 후기'));
+      await tester.ensureVisible(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byIcon(Icons.more_vert));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('차단'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, '차단'));
+      await tester.pumpAndSettle();
+
+      // 서버는 그대로 주지만 앱에서 걸러 냅니다.
+      expect(find.text('남이 쓴 후기'), findsNothing);
+      expect(find.text('아직 후기가 없습니다.'), findsOneWidget);
+    });
+
+    testWidgets('차단한 사용자의 후기는 처음부터 보이지 않는다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: true,
+        reviews: const [othersReview],
+        blockedIds: const {99},
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollListTo(tester, find.text('방문자 후기'));
+
+      expect(find.text('남이 쓴 후기'), findsNothing);
+    });
+
+    testWidgets('내 후기에는 신고·차단이 없다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: true,
+        reviews: const [
+          {
+            'id': 5,
+            'userId': 1,
+            'username': 'teumsae_user',
+            'rating': 5,
+            'comment': '내가 쓴 후기',
+            'createdAt': '2026-08-28T23:04:11.123',
+          },
+        ],
+      );
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+      await _scrollListTo(tester, find.text('내가 쓴 후기'));
+
+      expect(find.byIcon(Icons.more_vert), findsNothing);
+      expect(find.widgetWithText(TextButton, '삭제'), findsOneWidget);
     });
   });
 

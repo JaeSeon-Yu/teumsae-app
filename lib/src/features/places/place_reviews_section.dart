@@ -6,14 +6,14 @@ import '../../routes/app_routes.dart';
 import '../../widgets/app_callout.dart';
 import '../../widgets/app_section_card.dart';
 import '../auth/auth_controller.dart';
+import '../users/block_controller.dart';
+import '../users/report_sheet.dart';
+import '../users/user_profile.dart';
 import 'place_detail.dart';
 import 'place_detail_controller.dart';
 import 'place_review.dart';
 
 /// 방문자 후기. 웹 `PlaceReviewsSection`에 대응합니다.
-///
-/// 신고·차단은 넣지 않았습니다. 공개 프로필과 함께 들어가는 기능이라
-/// 이식 순서에서 뒤에 있습니다. (README "웹 기능 이식 순서" 참고)
 class PlaceReviewsSection extends StatefulWidget {
   const PlaceReviewsSection({required this.place, super.key});
 
@@ -36,6 +36,7 @@ class _PlaceReviewsSectionState extends State<PlaceReviewsSection> {
   Widget build(BuildContext context) {
     final controller = Get.find<PlaceDetailController>();
     final auth = Get.find<AuthController>();
+    final blocks = Get.find<BlockController>();
 
     return AppSectionCard(
       title: '방문자 후기',
@@ -65,7 +66,11 @@ class _PlaceReviewsSectionState extends State<PlaceReviewsSection> {
           ),
           const SizedBox(height: AppSpacing.md),
           Obx(() {
-            final reviews = controller.reviews;
+            // 차단한 사용자의 후기는 목록에서 감춥니다. 서버는 그대로 주므로
+            // 앱에서 걸러 냅니다. (웹도 차단 직후 목록에서 지웁니다)
+            final reviews = controller.reviews
+                .where((review) => !blocks.isBlocked(review.userId))
+                .toList(growable: false);
             if (reviews.isEmpty) {
               return const AppCallout(
                 title: '아직 후기가 없습니다.',
@@ -79,7 +84,10 @@ class _PlaceReviewsSectionState extends State<PlaceReviewsSection> {
                   _ReviewTile(
                     review: review,
                     controller: controller,
+                    blocks: blocks,
                     canDelete: _canDelete(auth, review),
+                    canModerate: auth.isSignedIn &&
+                        auth.user?.id != review.userId,
                   ),
               ],
             );
@@ -263,16 +271,116 @@ class _SignInPrompt extends StatelessWidget {
   }
 }
 
+/// 남의 후기에 붙는 신고·차단. 웹은 링크 두 개로 두지만 앱은 좁아서 메뉴로 모읍니다.
+class _ModerationMenu extends StatelessWidget {
+  const _ModerationMenu({required this.review, required this.blocks});
+
+  final PlaceReview review;
+  final BlockController blocks;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: '신고 · 차단',
+      icon: const Icon(Icons.more_vert, size: 18),
+      itemBuilder: (_) => const [
+        PopupMenuItem(value: 'report', child: Text('신고')),
+        PopupMenuItem(value: 'block', child: Text('차단')),
+      ],
+      onSelected: (value) async {
+        if (value == 'report') {
+          await _report(context);
+          return;
+        }
+        await _confirmBlock(context);
+      },
+    );
+  }
+
+  Future<void> _report(BuildContext context) async {
+    final reason = await ReportSheet.show(
+      context,
+      target: ReportTarget.review,
+    );
+    if (reason == null || !context.mounted) {
+      return;
+    }
+
+    final ok = await blocks.report(
+      target: ReportTarget.review,
+      targetId: review.id,
+      reason: reason,
+    );
+    if (!context.mounted) {
+      return;
+    }
+
+    // 신고는 화면이 바뀌지 않아 성공도 알려 줘야 합니다.
+    _snack(ok ? '신고가 접수되었습니다.' : (blocks.errorMessage ?? '신고를 접수하지 못했습니다.'));
+    blocks.clearError();
+  }
+
+  Future<void> _confirmBlock(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('사용자를 차단할까요?'),
+        content: Text(
+          '차단하면 ${review.username} 사용자의 후기가 더 이상 보이지 않습니다.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('차단'),
+          ),
+        ],
+      ),
+    );
+
+    if (!(confirmed ?? false)) {
+      return;
+    }
+
+    // 성공하면 목록에서 사라지는 것으로 보입니다. 실패만 알립니다.
+    if (!await blocks.block(review.userId)) {
+      _snack(blocks.errorMessage ?? '차단하지 못했습니다.');
+      blocks.clearError();
+    }
+  }
+
+  void _snack(String message) {
+    Get.showSnackbar(
+      GetSnackBar(
+        message: message,
+        duration: const Duration(seconds: 3),
+        snackPosition: SnackPosition.BOTTOM,
+        margin: const EdgeInsets.all(AppSpacing.md),
+        borderRadius: AppRadius.control,
+      ),
+    );
+  }
+}
+
 class _ReviewTile extends StatelessWidget {
   const _ReviewTile({
     required this.review,
     required this.controller,
+    required this.blocks,
     required this.canDelete,
+    required this.canModerate,
   });
 
   final PlaceReview review;
   final PlaceDetailController controller;
+  final BlockController blocks;
   final bool canDelete;
+
+  /// 남의 후기를 로그인 상태로 보고 있는지. 신고·차단을 보일지 정합니다.
+  final bool canModerate;
 
   @override
   Widget build(BuildContext context) {
@@ -289,10 +397,17 @@ class _ReviewTile extends StatelessWidget {
                 child: Row(
                   children: [
                     Flexible(
-                      child: Text(
-                        review.username,
-                        style: textTheme.labelLarge,
-                        overflow: TextOverflow.ellipsis,
+                      child: InkWell(
+                        onTap: review.username.isEmpty
+                            ? null
+                            : () => Get.toNamed(
+                                  AppRoutes.userProfile(review.username),
+                                ),
+                        child: Text(
+                          review.username,
+                          style: textTheme.labelLarge,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
@@ -311,7 +426,10 @@ class _ReviewTile extends StatelessWidget {
                       controller.deletingReviewId == review.id ? '삭제 중' : '삭제',
                     ),
                   ),
-                ),
+                )
+              else if (canModerate)
+                // 신고·차단을 버튼 두 개로 두면 후기 한 줄이 버튼으로 가득 찹니다.
+                _ModerationMenu(review: review, blocks: blocks),
             ],
           ),
           const SizedBox(height: AppSpacing.xs),
