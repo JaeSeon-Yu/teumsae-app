@@ -83,10 +83,12 @@ class PlaceDetail {
   const PlaceDetail({
     required this.id,
     required this.name,
+    required this.type,
     required this.typeLabel,
     required this.address,
     required this.lat,
     required this.lng,
+    required this.priceLevel,
     required this.priceLabel,
     required this.indoor,
     required this.outdoor,
@@ -97,6 +99,7 @@ class PlaceDetail {
     required this.weatherScores,
     required this.warnings,
     required this.tags,
+    required this.themes,
     required this.saved,
     required this.userCreated,
     required this.reviewCount,
@@ -113,10 +116,18 @@ class PlaceDetail {
 
   final int id;
   final String name;
+
+  /// 서버 `PlaceType` 이름. 수정 폼의 선택값을 되살리는 데 씁니다.
+  final String type;
+
   final String typeLabel;
   final String address;
   final double lat;
   final double lng;
+
+  /// 서버 `PriceLevel` 이름. 수정 폼의 선택값을 되살리는 데 씁니다.
+  final String priceLevel;
+
   final String priceLabel;
   final bool indoor;
   final bool outdoor;
@@ -130,6 +141,9 @@ class PlaceDetail {
   final PlaceWeatherScores weatherScores;
   final List<String> warnings;
   final List<String> tags;
+
+  /// 서버 `PlaceTheme` 이름 목록. 수정 폼에서 되살립니다.
+  final List<String> themes;
 
   /// 로그인한 사용자가 저장한 장소인지. 비로그인이면 서버가 항상 `false`를 줍니다.
   final bool saved;
@@ -152,10 +166,12 @@ class PlaceDetail {
     return PlaceDetail(
       id: (json['id'] as num).toInt(),
       name: json['name'] as String,
+      type: json['type'] as String? ?? '',
       typeLabel: json['typeLabel'] as String? ?? '',
       address: json['address'] as String? ?? '',
       lat: (json['lat'] as num?)?.toDouble() ?? 0,
       lng: (json['lng'] as num?)?.toDouble() ?? 0,
+      priceLevel: json['priceLevel'] as String? ?? '',
       priceLabel: json['priceLabel'] as String? ?? '',
       indoor: json['indoor'] as bool? ?? false,
       outdoor: json['outdoor'] as bool? ?? false,
@@ -170,6 +186,7 @@ class PlaceDetail {
       ),
       warnings: _stringList(json['warnings']),
       tags: _stringList(json['tags']),
+      themes: _stringList(json['themes']),
       saved: json['saved'] as bool? ?? false,
       userCreated: json['userCreated'] as bool? ?? false,
       reviewCount: (json['reviewCount'] as num?)?.toInt() ?? 0,

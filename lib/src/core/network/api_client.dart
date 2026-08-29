@@ -168,6 +168,29 @@ class ApiClient {
     });
   }
 
+  Future<Map<String, dynamic>> putJson(String path, {Object? body}) async {
+    return _guard(() async {
+      final response = await _dio.put<Map<String, dynamic>>(path, data: body);
+      return response.data ?? const {};
+    });
+  }
+
+  /// 최상위가 배열인 응답(태그 목록 등)용.
+  Future<List<Object?>> getJsonList(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final response = await _dio.get<List<Object?>>(
+        path,
+        queryParameters: query,
+      );
+      return response.data ?? const [];
+    } on DioException catch (error) {
+      throw ApiException.fromDioException(error);
+    }
+  }
+
   /// 204를 돌려주는 엔드포인트(로그아웃 등)용.
   Future<void> postEmpty(String path, {Object? body}) async {
     await _guard(() async {

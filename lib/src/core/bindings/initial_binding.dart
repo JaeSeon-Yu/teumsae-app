@@ -3,7 +3,9 @@ import 'package:get/get.dart';
 import '../../features/account/settings_controller.dart';
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_repository.dart';
+import '../../features/places/my_places_controller.dart';
 import '../../features/places/place_detail_controller.dart';
+import '../../features/places/place_form_controller.dart';
 import '../../features/places/place_map.dart';
 import '../../features/places/places_controller.dart';
 import '../../features/places/places_repository.dart';
@@ -115,6 +117,31 @@ class PlaceDetailBinding extends Bindings {
         repository: Get.find<PlacesRepository>(),
         id: id,
       ),
+    );
+  }
+}
+
+/// 장소 등록(`/places/new`)·수정(`/places/:id/edit`) 진입 시 만듭니다.
+///
+/// 수정이면 라우트 파라미터의 id를 넘깁니다. 등록이면 `null`입니다.
+class PlaceFormBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<PlaceFormController>(
+      () => PlaceFormController(
+        repository: Get.find<PlacesRepository>(),
+        placeId: int.tryParse(Get.parameters['id'] ?? ''),
+      ),
+    );
+  }
+}
+
+/// 내가 등록한 장소(`/account/places`) 진입 시 만듭니다.
+class MyPlacesBinding extends Bindings {
+  @override
+  void dependencies() {
+    Get.lazyPut<MyPlacesController>(
+      () => MyPlacesController(Get.find<PlacesRepository>()),
     );
   }
 }

@@ -28,6 +28,13 @@ abstract interface class PlaceMapBuilder {
     required double lng,
     required String name,
   });
+
+  /// 지도를 눌러 좌표를 고르는 지도. 등록·수정 폼에서 씁니다.
+  Widget picker({
+    required double lat,
+    required double lng,
+    required void Function(double lat, double lng) onPicked,
+  });
 }
 
 /// 실제 네이버 지도 구현.
@@ -66,6 +73,19 @@ class NaverPlaceMapBuilder implements PlaceMapBuilder {
     }
 
     return _SinglePlaceMap(lat: lat, lng: lng, name: name);
+  }
+
+  @override
+  Widget picker({
+    required double lat,
+    required double lng,
+    required void Function(double lat, double lng) onPicked,
+  }) {
+    if (!MapBootstrap.isAvailable) {
+      return _MapUnavailable(reason: MapBootstrap.unavailableReason);
+    }
+
+    return _PinPickerMap(lat: lat, lng: lng, onPicked: onPicked);
   }
 }
 
@@ -215,8 +235,76 @@ class _SearchResultsMapState extends State<_SearchResultsMap> {
   }
 }
 
+/// 등록·수정 폼용 지도. 지도를 누른 자리로 핀을 옮깁니다.
+/// (웹 `PlacePinPickerMap`과 같은 취급입니다)
+class _PinPickerMap extends StatefulWidget {
+  const _PinPickerMap({
+    required this.lat,
+    required this.lng,
+    required this.onPicked,
+  });
+
+  final double lat;
+  final double lng;
+  final void Function(double lat, double lng) onPicked;
+
+  @override
+  State<_PinPickerMap> createState() => _PinPickerMapState();
+}
+
+class _PinPickerMapState extends State<_PinPickerMap> {
+  NaverMapController? _controller;
+
+  @override
+  void didUpdateWidget(_PinPickerMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.lat != widget.lat || oldWidget.lng != widget.lng) {
+      _drawPin();
+    }
+  }
+
+  Future<void> _drawPin() async {
+    final controller = _controller;
+    if (controller == null) {
+      return;
+    }
+
+    // 핀은 하나만 둡니다. 지우지 않으면 누른 자리마다 쌓입니다.
+    await controller.clearOverlays(type: NOverlayType.marker);
+    await controller.addOverlay(
+      NMarker(
+        id: 'picked',
+        position: NLatLng(widget.lat, widget.lng),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return NaverMap(
+      options: NaverMapViewOptions(
+        initialCameraPosition: NCameraPosition(
+          target: NLatLng(widget.lat, widget.lng),
+          zoom: 16,
+        ),
+        indoorEnable: false,
+        rotationGesturesEnable: false,
+        tiltGesturesEnable: false,
+        // 폼의 스크롤 안에 있어서 지도에 제스처를 먼저 줘야 핀을 찍을 수 있습니다.
+      ),
+      forceGesture: true,
+      onMapReady: (controller) {
+        _controller = controller;
+        _drawPin();
+      },
+      onMapTapped: (point, latLng) =>
+          widget.onPicked(latLng.latitude, latLng.longitude),
+    );
+  }
+}
+
 /// 상세 화면용 지도. 손대지 못하게 막고 위치만 보여 줍니다.
-/// (웹 `StaticPlaceMap`과 같은 취급입니다)
 class _SinglePlaceMap extends StatelessWidget {
   const _SinglePlaceMap({
     required this.lat,

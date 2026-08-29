@@ -10,7 +10,10 @@ import 'package:teumsae_app/src/features/auth/auth_controller.dart';
 import 'package:teumsae_app/src/features/auth/auth_repository.dart';
 import 'package:teumsae_app/src/features/auth/auth_user.dart';
 import 'package:teumsae_app/src/features/places/place_detail.dart';
+import 'package:teumsae_app/src/features/places/my_places_controller.dart';
 import 'package:teumsae_app/src/features/places/place_detail_controller.dart';
+import 'package:teumsae_app/src/features/places/place_form.dart';
+import 'package:teumsae_app/src/features/places/place_form_controller.dart';
 import 'package:teumsae_app/src/features/places/place_map.dart';
 import 'package:teumsae_app/src/features/places/place_review.dart';
 import 'package:teumsae_app/src/features/places/place_search_query.dart';
@@ -106,6 +109,39 @@ class _StubPlacesRepository extends PlacesRepository {
         .where((review) => review['id'] != reviewId)
         .toList(growable: false);
   }
+
+  Map<String, dynamic>? lastCreatedPlace;
+  Map<String, dynamic>? lastUpdatedPlace;
+  final deletedPlaceIds = <int>[];
+
+  @override
+  Future<List<PlaceTagOption>> tags() async => const [
+        PlaceTagOption(name: 'INDOOR', label: '실내'),
+        PlaceTagOption(name: 'WIFI', label: '와이파이'),
+      ];
+
+  @override
+  Future<PlaceDetail> createPlace(Map<String, dynamic> body) async {
+    lastCreatedPlace = body;
+    return getPlace(99);
+  }
+
+  @override
+  Future<PlaceDetail> updatePlace(int id, Map<String, dynamic> body) async {
+    lastUpdatedPlace = body;
+    return getPlace(id);
+  }
+
+  @override
+  Future<void> deletePlace(int id) async => deletedPlaceIds.add(id);
+
+  @override
+  Future<List<PlaceDetail>> myPlaces() async =>
+      [await getPlace(1), await getPlace(2)];
+
+  @override
+  Future<String?> reverseGeocode(double lat, double lng) async =>
+      '서울 성북구 화랑로 123';
 }
 
 /// 저장 목록도 서버를 호출하므로 메모리 목록으로 바꿉니다.
@@ -227,6 +263,23 @@ class _FakePlaceMapBuilder implements PlaceMapBuilder {
   }) {
     return Text('지도 $name');
   }
+
+  @override
+  Widget picker({
+    required double lat,
+    required double lng,
+    required void Function(double lat, double lng) onPicked,
+  }) {
+    return Column(
+      children: [
+        Text('핀 $lat, $lng'),
+        TextButton(
+          onPressed: () => onPicked(37.55, 126.99),
+          child: const Text('지도에서 위치 고르기'),
+        ),
+      ],
+    );
+  }
 }
 
 /// 실제 앱과 같은 라우트·바인딩으로 띄우되, 의존성만 테스트용으로 갈아끼웁니다.
@@ -310,14 +363,20 @@ Future<void> _scrollSheetTo(WidgetTester tester, Finder target) {
   );
 }
 
-/// 상세 화면 본문을 스크롤합니다.
+/// 화면 본문(`ListView`)을 스크롤합니다.
 ///
-/// 후기 작성 폼의 `TextField`도 내부에 Scrollable을 만들기 때문에
-/// 기본 `scrollUntilVisible`은 어느 것을 굴릴지 정하지 못합니다.
-Future<void> _scrollDetailTo(WidgetTester tester, Finder target) {
+/// 입력칸(`TextField`)도 내부에 Scrollable을 만들기 때문에 기본
+/// `scrollUntilVisible`은 어느 것을 굴릴지 정하지 못합니다. 그리고 화면 밖
+/// 항목은 아직 만들어지지 않아 `ensureVisible`로는 찾을 수 없습니다.
+Future<void> _scrollListTo(
+  WidgetTester tester,
+  Finder target, {
+  /// 위쪽에 있는 항목을 찾을 때는 음수를 넘깁니다.
+  double delta = 300,
+}) {
   return tester.scrollUntilVisible(
     target,
-    300,
+    delta,
     scrollable: find
         .descendant(
           of: find.byType(ListView),
@@ -655,7 +714,7 @@ void main() {
       );
       await tester.tap(find.text('성북구립도서관'));
       await tester.pumpAndSettle();
-      await _scrollDetailTo(tester, find.text('방문자 후기'));
+      await _scrollListTo(tester, find.text('방문자 후기'));
     }
 
     testWidgets('서버가 준 정보를 구역별로 보여준다', (tester) async {
@@ -753,7 +812,7 @@ void main() {
       // 별점은 기본값 5점으로 보냅니다.
       expect(repository.lastCreatedReview?.rating, 5);
       expect(repository.lastCreatedReview?.comment, '조용하고 좋았어요');
-      await _scrollDetailTo(tester, find.text('조용하고 좋았어요'));
+      await _scrollListTo(tester, find.text('조용하고 좋았어요'));
       expect(find.text('조용하고 좋았어요'), findsOneWidget);
     });
 
@@ -816,7 +875,7 @@ void main() {
 
       // 서버도 본인 후기만 삭제를 허용합니다. 지울 수 없는 버튼을 보여 주고
       // 403을 받게 하지 않습니다.
-      await _scrollDetailTo(tester, find.text('남이 쓴 후기'));
+      await _scrollListTo(tester, find.text('남이 쓴 후기'));
       expect(find.widgetWithText(TextButton, '삭제'), findsOneWidget);
     });
 
@@ -861,8 +920,151 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('내가 쓴 후기'), findsNothing);
-      await _scrollDetailTo(tester, find.text('아직 후기가 없습니다.'));
+      await _scrollListTo(tester, find.text('아직 후기가 없습니다.'));
       expect(find.text('아직 후기가 없습니다.'), findsOneWidget);
+    });
+  });
+
+  group('장소 등록·수정', () {
+    testWidgets('로그인하지 않으면 등록 화면을 열 수 없다', (tester) async {
+      await _pumpApp(tester, initialRoute: AppRoutes.placeNew);
+
+      expect(Get.currentRoute, AppRoutes.login);
+    });
+
+    testWidgets('등록 화면은 빈 이름을 서버 없이 막는다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeNew,
+        signedIn: true,
+      );
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      final submit = find.widgetWithText(FilledButton, '장소 등록');
+      await _scrollListTo(tester, submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      expect(repository.lastCreatedPlace, isNull);
+      // 안내 문구는 폼 맨 위에 붙습니다. 버튼까지 내려온 뒤라 올라가며 찾습니다.
+      await _scrollListTo(
+        tester,
+        find.text('장소 이름을 입력해 주세요.'),
+        delta: -300,
+      );
+      expect(find.text('장소 이름을 입력해 주세요.'), findsOneWidget);
+    });
+
+    testWidgets('이름을 넣고 등록하면 상세로 이동한다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeNew,
+        signedIn: true,
+      );
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+
+      await tester.enterText(find.byType(TextField).first, '틈새 쉼터');
+      final submit = find.widgetWithText(FilledButton, '장소 등록');
+      await _scrollListTo(tester, submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      expect(repository.lastCreatedPlace?['name'], '틈새 쉼터');
+      // 기본값은 웹 폼과 같습니다.
+      expect(repository.lastCreatedPlace?['type'], 'PUBLIC_FACILITY');
+      expect(repository.lastCreatedPlace?['priceLevel'], 'FREE');
+      expect(Get.currentRoute, AppRoutes.placeDetail(99));
+    });
+
+    testWidgets('지도에서 위치를 고르면 좌표와 주소가 바뀐다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeNew,
+        signedIn: true,
+      );
+
+      await _scrollListTo(tester, find.text('지도에서 위치 고르기'));
+      await tester.tap(find.text('지도에서 위치 고르기'));
+      await tester.pumpAndSettle();
+
+      final controller = Get.find<PlaceFormController>();
+      expect(controller.values.lat, 37.55);
+      expect(controller.values.lng, 126.99);
+      // 주소를 비워 뒀으면 서버가 찾아 준 값을 채웁니다.
+      expect(controller.values.address, '서울 성북구 화랑로 123');
+    });
+
+    testWidgets('수정 화면은 기존 값을 채워서 연다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeEdit(5),
+        signedIn: true,
+      );
+
+      final controller = Get.find<PlaceFormController>();
+      expect(controller.isEditing, isTrue);
+      expect(controller.values.name, '성북구립도서관');
+      expect(find.text('장소 수정'), findsOneWidget);
+      await _scrollListTo(tester, find.widgetWithText(FilledButton, '수정 저장'));
+      expect(find.widgetWithText(FilledButton, '수정 저장'), findsOneWidget);
+    });
+  });
+
+  group('내가 등록한 장소', () {
+    testWidgets('로그인하지 않으면 열 수 없다', (tester) async {
+      await _pumpApp(tester, initialRoute: AppRoutes.myPlaces);
+
+      expect(Get.currentRoute, AppRoutes.login);
+    });
+
+    testWidgets('등록한 장소를 보여주고 수정으로 갈 수 있다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.myPlaces,
+        signedIn: true,
+      );
+
+      expect(find.text('성북구립도서관'), findsWidgets);
+
+      await tester.tap(find.widgetWithText(TextButton, '수정').first);
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.placeEdit(1));
+    });
+
+    testWidgets('삭제는 한 번 더 확인하고 목록에서 지운다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.myPlaces,
+        signedIn: true,
+      );
+      final controller = Get.find<MyPlacesController>();
+      expect(controller.places, hasLength(2));
+
+      await tester.tap(find.widgetWithText(TextButton, '삭제').first);
+      await tester.pumpAndSettle();
+      expect(find.text('장소를 삭제할까요?'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.widgetWithText(TextButton, '삭제'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.places, hasLength(1));
+    });
+
+    testWidgets('내 정보 탭에서 들어갈 수 있다', (tester) async {
+      await _pumpApp(tester, signedIn: true);
+      await tester.tap(_tab('내 정보'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(OutlinedButton, '내가 등록한 장소'));
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.myPlaces);
     });
   });
 

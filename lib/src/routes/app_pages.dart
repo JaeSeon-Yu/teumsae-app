@@ -5,7 +5,9 @@ import '../core/bindings/initial_binding.dart';
 import '../features/account/settings_screen.dart';
 import '../features/auth/auth_controller.dart';
 import '../features/auth/auth_screen.dart';
+import '../features/places/my_places_screen.dart';
 import '../features/places/place_detail_screen.dart';
+import '../features/places/place_form_screen.dart';
 import '../features/shell/main_shell.dart';
 import 'app_routes.dart';
 
@@ -56,10 +58,30 @@ abstract final class AppPages {
       page: () => const AuthScreen(mode: AuthMode.signup),
       middlewares: [RedirectSignedInMiddleware()],
     ),
+    // `/places/new`를 `/places/:id`보다 먼저 등록합니다. 뒤에 두면 GetX가
+    // `new`를 id로 잡아 상세 화면이 열립니다.
+    GetPage(
+      name: AppRoutes.placeNew,
+      page: () => const PlaceFormScreen(),
+      binding: PlaceFormBinding(),
+      middlewares: [RequireSignInMiddleware()],
+    ),
+    GetPage(
+      name: AppRoutes.placeEditPattern,
+      page: () => const PlaceFormScreen(),
+      binding: PlaceFormBinding(),
+      middlewares: [RequireSignInMiddleware()],
+    ),
     GetPage(
       name: AppRoutes.placeDetailPattern,
       page: () => const PlaceDetailScreen(),
       binding: PlaceDetailBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.myPlaces,
+      page: () => const MyPlacesScreen(),
+      binding: MyPlacesBinding(),
+      middlewares: [RequireSignInMiddleware()],
     ),
     GetPage(
       name: AppRoutes.settings,

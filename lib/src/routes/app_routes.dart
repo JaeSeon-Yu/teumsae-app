@@ -12,6 +12,20 @@ abstract final class AppRoutes {
 
   static String placeDetail(int id) => '/places/$id';
 
+  /// 장소 등록. 로그인이 필요합니다.
+  static const placeNew = '/places/new';
+
+  /// 장소 수정. 등록에 쓰는 패턴이라 이동할 때는 [placeEdit]을 쓰세요.
+  ///
+  /// `/places/new`보다 뒤에 등록하면 GetX가 `new`를 id로 잡습니다.
+  /// 그래서 [AppPages]에서 등록 순서를 지킵니다.
+  static const placeEditPattern = '/places/:id/edit';
+
+  static String placeEdit(int id) => '/places/$id/edit';
+
+  /// 내가 등록한 장소. 로그인이 필요합니다.
+  static const myPlaces = '/account/places';
+
   /// 계정 설정. 로그인이 필요합니다.
   static const settings = '/settings';
 }

@@ -127,6 +127,12 @@ class _SignedInView extends StatelessWidget {
         ),
         const SizedBox(height: AppSpacing.lg),
         OutlinedButton.icon(
+          onPressed: () => Get.toNamed(AppRoutes.myPlaces),
+          icon: const Icon(Icons.place_outlined, size: 18),
+          label: const Text('내가 등록한 장소'),
+        ),
+        const SizedBox(height: AppSpacing.md),
+        OutlinedButton.icon(
           onPressed: () => Get.toNamed(AppRoutes.settings),
           icon: const Icon(Icons.settings_outlined, size: 18),
           label: const Text('계정 및 보안 설정'),
