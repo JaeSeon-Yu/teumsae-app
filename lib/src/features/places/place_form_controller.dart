@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 
 import '../../core/network/api_exception.dart';
+import '../auth/auth_controller.dart';
 import 'place_detail.dart';
 import 'place_form.dart';
 import 'places_repository.dart';
@@ -9,10 +10,15 @@ import 'places_repository.dart';
 ///
 /// [placeId]가 `null`이면 등록, 있으면 수정입니다.
 class PlaceFormController extends GetxController {
-  PlaceFormController({required PlacesRepository repository, this.placeId})
-      : _repository = repository;
+  PlaceFormController({
+    required PlacesRepository repository,
+    required AuthController auth,
+    this.placeId,
+  })  : _repository = repository,
+        _auth = auth;
 
   final PlacesRepository _repository;
+  final AuthController _auth;
 
   /// 수정할 장소 id. 등록이면 `null`.
   final int? placeId;
@@ -23,6 +29,7 @@ class PlaceFormController extends GetxController {
   final _isSubmitting = false.obs;
   final _errorMessage = RxnString();
   final _isResolvingAddress = false.obs;
+  final _isEditable = true.obs;
 
   PlaceFormValues get values => _values.value;
   List<PlaceTagOption> get tagOptions => _tagOptions;
@@ -43,6 +50,12 @@ class PlaceFormController extends GetxController {
 
   bool get isEditing => placeId != null;
   String get title => isEditing ? '장소 수정' : '장소 등록';
+
+  /// 이 폼으로 저장할 수 있는지. 남이 등록한 장소를 수정하려 한 경우에만 `false`입니다.
+  ///
+  /// 서버가 어차피 403을 주지만(`PlaceService.requireOwnedBy`), 그러면 다 채워 넣은
+  /// 다음에야 막힌 걸 알게 됩니다. 들어올 때 판정해 폼을 잠급니다.
+  bool get isEditable => _isEditable.value;
 
   @override
   void onInit() {
@@ -73,9 +86,18 @@ class PlaceFormController extends GetxController {
     _errorMessage.value = null;
 
     try {
-      _values.value = PlaceFormValues.fromDetail(
-        await _repository.getPlace(id),
-      );
+      final place = await _repository.getPlace(id);
+
+      // 작성자 고유 번호가 다르면 남의 장소입니다. 화면 진입 경로가 늘어나도
+      // (상세 화면의 수정 버튼, 주소 직접 입력) 여기서 한 번은 걸립니다.
+      if (!place.isOwnedBy(_auth.user?.id)) {
+        _isEditable.value = false;
+        _errorMessage.value = '직접 등록한 장소만 수정할 수 있습니다.';
+        return;
+      }
+
+      _isEditable.value = true;
+      _values.value = PlaceFormValues.fromDetail(place);
     } on ApiException catch (error) {
       _errorMessage.value =
           error.statusCode == 404 ? '없는 장소이거나 삭제된 장소입니다.' : error.message;
@@ -138,6 +160,11 @@ class PlaceFormController extends GetxController {
   /// 저장에 성공하면 장소 id, 실패하면 `null`을 돌려줍니다.
   Future<int?> submit() async {
     if (_isSubmitting.value) {
+      return null;
+    }
+
+    if (!_isEditable.value) {
+      // 폼이 잠긴 이유는 이미 [errorMessage]에 있습니다. 덮어쓰지 않습니다.
       return null;
     }
 

@@ -155,6 +155,7 @@ class PlaceFormBinding extends Bindings {
     Get.lazyPut<PlaceFormController>(
       () => PlaceFormController(
         repository: Get.find<PlacesRepository>(),
+        auth: Get.find<AuthController>(),
         placeId: int.tryParse(Get.parameters['id'] ?? ''),
       ),
     );

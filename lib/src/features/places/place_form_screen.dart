@@ -28,6 +28,27 @@ class PlaceFormScreen extends GetView<PlaceFormController> {
           return const Center(child: CircularProgressIndicator());
         }
 
+        // 남의 장소를 수정하려 한 경우. 폼을 아예 내리고 이유만 보여 줍니다.
+        if (!controller.isEditable) {
+          return Padding(
+            padding: const EdgeInsets.all(AppSpacing.lg),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AppCallout(
+                  title: controller.errorMessage ?? '이 장소는 수정할 수 없습니다.',
+                  tone: CalloutTone.danger,
+                ),
+                const SizedBox(height: AppSpacing.lg),
+                OutlinedButton(
+                  onPressed: Get.back<void>,
+                  child: const Text('돌아가기'),
+                ),
+              ],
+            ),
+          );
+        }
+
         return _FormBody(controller: controller);
       }),
     );
@@ -408,6 +429,15 @@ class _FormBodyState extends State<_FormBody> {
   Future<void> _submit() async {
     final id = await controller.submit();
     if (id == null) {
+      return;
+    }
+
+    // 상세 화면에서 수정으로 들어온 경우. 아래에 이미 그 장소의 상세가 있으므로
+    // 새로 밀어 넣지 않고 덮고 있던 폼만 걷어냅니다. 상세를 또 쌓으면 뒤로 가기가
+    // 같은 화면을 두 번 지나가고, 아래에 깔린 쪽은 낡은 값을 들고 있습니다.
+    // 돌아간 상세 화면은 열어 준 쪽이 다시 받습니다. (`_HeaderActions`)
+    if (Get.previousRoute == AppRoutes.placeDetail(id)) {
+      Get.back<void>();
       return;
     }
 

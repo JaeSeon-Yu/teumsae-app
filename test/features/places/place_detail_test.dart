@@ -97,6 +97,29 @@ void main() {
     expect(place.sourceUrl, isNull);
   });
 
+  test('직접 등록한 장소는 작성자 고유 번호로 가린다', () {
+    final mine = PlaceDetail.fromJson({
+      ..._json(),
+      'userCreated': true,
+      'createdByUserId': 7,
+      'createdByUsername': 'jason',
+    });
+
+    expect(mine.createdByUserId, 7);
+    expect(mine.isOwnedBy(7), isTrue);
+    // 다른 사용자, 비로그인은 모두 수정 권한이 없습니다.
+    expect(mine.isOwnedBy(8), isFalse);
+    expect(mine.isOwnedBy(null), isFalse);
+  });
+
+  test('공공데이터로 들여온 장소는 주인이 없다', () {
+    // userCreated가 false면 작성자 번호도 오지 않습니다.
+    final imported = PlaceDetail.fromJson(_json());
+
+    expect(imported.createdByUserId, isNull);
+    expect(imported.isOwnedBy(7), isFalse);
+  });
+
   test('필드가 빠져도 기본값으로 읽는다', () {
     // 서버가 새 필드를 추가하거나 일부를 생략해도 화면이 죽지 않아야 합니다.
     final place = PlaceDetail.fromJson({'id': 1, 'name': '이름만 있는 장소'});

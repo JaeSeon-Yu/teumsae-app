@@ -3,9 +3,11 @@ import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../routes/app_routes.dart';
 import '../../widgets/app_badge.dart';
 import '../../widgets/app_callout.dart';
 import '../../widgets/app_section_card.dart';
+import '../auth/auth_controller.dart';
 import '../saved/save_place_button.dart';
 import 'operating_hours.dart';
 import 'place_detail.dart';
@@ -180,7 +182,7 @@ class _Header extends StatelessWidget {
               Text(place.address, style: textTheme.bodyMedium),
             ],
             const SizedBox(height: AppSpacing.lg),
-            SavePlaceButton(placeId: place.id),
+            _HeaderActions(place: place),
             const SizedBox(height: AppSpacing.lg),
             Row(
               children: [
@@ -215,6 +217,51 @@ class _Header extends StatelessWidget {
       return BadgeTone.caution;
     }
     return BadgeTone.positive;
+  }
+}
+
+/// 저장 버튼과, 직접 등록한 장소일 때만 나오는 수정 버튼.
+///
+/// 수정 버튼은 작성자 고유 번호(`createdByUserId`)가 로그인한 사용자와 같을 때만
+/// 나옵니다. 서버도 같은 기준으로 `PUT /api/places/{id}`를 검사하므로, 버튼이 보이는
+/// 조건과 서버가 허용하는 조건이 어긋나지 않습니다.
+///
+/// 로그인 상태가 바뀌면 버튼도 따라 나타나거나 사라져야 해서 [Obx]로 감쌉니다.
+class _HeaderActions extends StatelessWidget {
+  const _HeaderActions({required this.place});
+
+  final PlaceDetail place;
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = Get.find<AuthController>();
+    final controller = Get.find<PlaceDetailController>();
+
+    return Obx(
+      () => Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: [
+          SavePlaceButton(placeId: place.id),
+          if (place.isOwnedBy(auth.user?.id))
+            OutlinedButton.icon(
+              onPressed: () => _openEditForm(controller),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('수정'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 수정 폼을 열고, 돌아오면 상세를 다시 받습니다.
+  ///
+  /// 폼은 저장에 성공하면 상세 라우트로 넘어가지만(`Get.offNamed`), 이 화면이 그 아래에
+  /// 남아 낡은 값을 들고 있을 수 있습니다. 후기 등록·삭제와 같은 이유로 서버 값을
+  /// 다시 받습니다.
+  Future<void> _openEditForm(PlaceDetailController controller) async {
+    await Get.toNamed(AppRoutes.placeEdit(place.id));
+    await controller.load();
   }
 }
 

@@ -110,6 +110,7 @@ class PlaceDetail {
     this.description,
     this.source,
     this.sourceUrl,
+    this.createdByUserId,
     this.createdByUsername,
     this.averageRating,
   });
@@ -159,6 +160,13 @@ class PlaceDetail {
   final String? description;
   final String? source;
   final String? sourceUrl;
+
+  /// 이 장소를 등록한 사용자의 고유 번호. 공공데이터로 들여온 장소는 `null`입니다.
+  ///
+  /// 수정 권한은 이 값으로만 판정합니다. [createdByUsername]은 표시용이고 바뀔 수 있어
+  /// 기준으로 쓸 수 없습니다. 서버도 같은 값으로 `PUT /api/places/{id}`를 검사합니다.
+  final int? createdByUserId;
+
   final String? createdByUsername;
   final double? averageRating;
 
@@ -197,6 +205,7 @@ class PlaceDetail {
       description: _trimmedOrNull(json['description']),
       source: _trimmedOrNull(json['source']),
       sourceUrl: _trimmedOrNull(json['sourceUrl']),
+      createdByUserId: (json['createdByUserId'] as num?)?.toInt(),
       createdByUsername: _trimmedOrNull(json['createdByUsername']),
       averageRating: (json['averageRating'] as num?)?.toDouble(),
     );
@@ -204,6 +213,13 @@ class PlaceDetail {
 
   /// 후기가 하나도 없으면 서버가 평균을 `null`로 줍니다. 이때는 별점을 숨깁니다.
   bool get hasRating => reviewCount > 0 && averageRating != null;
+
+  /// [userId]가 이 장소를 등록한 사람인지. 비로그인이면 `userId`가 `null`이라 `false`.
+  ///
+  /// 서버 `PlaceService.requireOwnedBy`와 같은 조건입니다. 관리자도 남의 장소는
+  /// 수정할 수 없어서(서버가 거부합니다) 역할은 보지 않습니다.
+  bool isOwnedBy(int? userId) =>
+      userCreated && createdByUserId != null && createdByUserId == userId;
 
   String get costLabel =>
       PlaceFormat.cost(estimatedCostMin, estimatedCostMax, priceLabel);

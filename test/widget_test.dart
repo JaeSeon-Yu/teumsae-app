@@ -37,10 +37,16 @@ import 'package:teumsae_app/src/widgets/score_badge.dart';
 
 /// 검색은 항상 서버를 호출하므로 목록만 돌려주는 대역으로 바꿉니다.
 class _StubPlacesRepository extends PlacesRepository {
-  _StubPlacesRepository(this.stubbed, {this.reviews = const []})
+  _StubPlacesRepository(this.stubbed, {this.reviews = const [], this.ownerId})
       : super(ApiClient(tokenStore: InMemoryTokenStore()));
 
   final List<PlaceSummary> stubbed;
+
+  /// 상세 응답의 작성자 고유 번호. `null`이면 공공데이터로 들여온 장소가 됩니다.
+  final int? ownerId;
+
+  /// 상세 응답의 이름. 수정을 저장하면 서버처럼 바뀐 이름을 돌려줍니다.
+  String detailName = '성북구립도서관';
 
   /// 마지막으로 요청된 조건. 위치 변경이 실제 검색에 반영됐는지 확인합니다.
   PlaceSearchQuery? lastQuery;
@@ -54,7 +60,7 @@ class _StubPlacesRepository extends PlacesRepository {
   @override
   Future<PlaceDetail> getPlace(int id) async => PlaceDetail.fromJson({
         'id': id,
-        'name': '성북구립도서관',
+        'name': detailName,
         'typeLabel': '도서관',
         'address': '서울 성북구 화랑로',
         'lat': 37.5921,
@@ -69,6 +75,8 @@ class _StubPlacesRepository extends PlacesRepository {
         'openingHoursText': '평일 09:00-18:00',
         'warnings': ['음식물 반입 금지'],
         'tags': ['조용함'],
+        'userCreated': ownerId != null,
+        'createdByUserId': ownerId,
         'reviewCount': reviews.length,
         'reviews': reviews,
         'averageRating': reviews.isEmpty
@@ -133,6 +141,7 @@ class _StubPlacesRepository extends PlacesRepository {
   @override
   Future<PlaceDetail> updatePlace(int id, Map<String, dynamic> body) async {
     lastUpdatedPlace = body;
+    detailName = body['name'] as String;
     return getPlace(id);
   }
 
@@ -363,6 +372,10 @@ Future<void> _pumpApp(
   Map<String, dynamic>? profile,
   SocialSignIn? socialSignIn,
   String provider = 'LOCAL',
+
+  /// 상세로 받아 볼 장소를 등록한 사용자의 고유 번호.
+  /// 로그인한 테스트 사용자는 1번이라, 1을 주면 내가 등록한 장소가 됩니다.
+  int? placeOwnerId,
 }) async {
   Get.testMode = true;
 
@@ -384,7 +397,7 @@ Future<void> _pumpApp(
   );
   // ShellController와 PlacesController는 ShellBinding이 만들어 줍니다.
   Get.put<PlacesRepository>(
-    _StubPlacesRepository(places, reviews: reviews),
+    _StubPlacesRepository(places, reviews: reviews, ownerId: placeOwnerId),
     permanent: true,
   );
   // 실제 구현은 플랫폼 채널을 타므로 테스트에서는 고정 좌표를 씁니다.
@@ -837,6 +850,42 @@ void main() {
       expect(find.byType(ScoreBadge), findsNothing);
     });
 
+    testWidgets('내가 등록한 장소에는 수정 버튼이 있고 수정 화면으로 간다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeDetail(1),
+        signedIn: true,
+        placeOwnerId: 1,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, '수정'));
+      await tester.pumpAndSettle();
+
+      expect(Get.currentRoute, AppRoutes.placeEdit(1));
+    });
+
+    testWidgets('남이 등록한 장소에는 수정 버튼이 없다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeDetail(1),
+        signedIn: true,
+        // 로그인한 사용자는 1번입니다. 작성자 고유 번호가 다르면 남의 장소입니다.
+        placeOwnerId: 2,
+      );
+
+      expect(find.widgetWithText(OutlinedButton, '수정'), findsNothing);
+    });
+
+    testWidgets('로그인하지 않으면 수정 버튼이 없다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeDetail(1),
+        placeOwnerId: 1,
+      );
+
+      expect(find.widgetWithText(OutlinedButton, '수정'), findsNothing);
+    });
+
     testWidgets('로그인 상태에서 상세의 저장 버튼이 동작한다', (tester) async {
       await _pumpApp(tester, places: const [samplePlace], signedIn: true);
       await tester.tap(find.text('성북구립도서관'));
@@ -1082,6 +1131,7 @@ void main() {
         tester,
         initialRoute: AppRoutes.placeEdit(5),
         signedIn: true,
+        placeOwnerId: 1,
       );
 
       final controller = Get.find<PlaceFormController>();
@@ -1090,6 +1140,52 @@ void main() {
       expect(find.text('장소 수정'), findsOneWidget);
       await _scrollListTo(tester, find.widgetWithText(FilledButton, '수정 저장'));
       expect(find.widgetWithText(FilledButton, '수정 저장'), findsOneWidget);
+    });
+
+    testWidgets('상세에서 들어와 저장하면 상세를 쌓지 않고 되돌아온다', (tester) async {
+      await _pumpApp(
+        tester,
+        places: const [samplePlace],
+        signedIn: true,
+        placeOwnerId: 1,
+      );
+      final repository = Get.find<PlacesRepository>() as _StubPlacesRepository;
+      await tester.tap(find.text('성북구립도서관'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(OutlinedButton, '수정'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '바뀐 쉼터');
+      final submit = find.widgetWithText(FilledButton, '수정 저장');
+      await _scrollListTo(tester, submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      expect(repository.lastUpdatedPlace?['name'], '바뀐 쉼터');
+      // 들어올 때 쓴 상세로 돌아오고, 서버 값을 다시 받아 바뀐 이름이 보입니다.
+      expect(Get.currentRoute, AppRoutes.placeDetail(samplePlace.id));
+      expect(find.text('바뀐 쉼터'), findsWidgets);
+
+      // 뒤로 가면 검색으로 나갑니다. 상세를 두 번 지나가지 않습니다.
+      Get.back<void>();
+      await tester.pumpAndSettle();
+      expect(Get.currentRoute, isNot(AppRoutes.placeDetail(samplePlace.id)));
+    });
+
+    testWidgets('남이 등록한 장소는 수정 화면을 잠근다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.placeEdit(5),
+        signedIn: true,
+        // 로그인한 사용자는 1번입니다.
+        placeOwnerId: 2,
+      );
+
+      final controller = Get.find<PlaceFormController>();
+      expect(controller.isEditable, isFalse);
+      expect(find.text('직접 등록한 장소만 수정할 수 있습니다.'), findsOneWidget);
+      // 폼 자체가 없으므로 저장 버튼도 없습니다.
+      expect(find.widgetWithText(FilledButton, '수정 저장'), findsNothing);
     });
   });
 
