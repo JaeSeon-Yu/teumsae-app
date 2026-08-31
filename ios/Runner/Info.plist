@@ -24,6 +24,25 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- 구글 로그인이 끝난 뒤 앱으로 돌아오는 통로입니다.
+	     값은 GoogleService-Info.plist의 REVERSED_CLIENT_ID와 같아야 합니다.
+	     (Firebase 콘솔에서 plist를 다시 받으면 이 값도 함께 맞춰 주세요) -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.594160077031-d021n8j5joe0k3ap4c42d6r4udjgelmi</string>
+			</array>
+		</dict>
+	</array>
+	<!-- google_sign_in이 읽는 iOS 클라이언트 ID.
+	     GoogleService-Info.plist의 CLIENT_ID와 같아야 합니다.
+	     (Firebase SDK는 이 키를 보지 않아서 따로 적어야 합니다) -->
+	<key>GIDClientID</key>
+	<string>594160077031-d021n8j5joe0k3ap4c42d6r4udjgelmi.apps.googleusercontent.com</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>

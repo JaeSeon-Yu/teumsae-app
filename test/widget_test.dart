@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
+import 'package:teumsae_app/src/core/auth/social_sign_in.dart';
 import 'package:teumsae_app/src/core/location/location_service.dart';
 import 'package:teumsae_app/src/core/network/api_client.dart';
 import 'package:teumsae_app/src/core/network/auth_tokens.dart';
@@ -244,6 +245,18 @@ class _StubAuthRepository extends AuthRepository {
   Future<void> logout() async {}
 
   @override
+  Future<AuthSession> socialLogin({
+    required String idToken,
+    String? nickname,
+  }) async {
+    socialNickname = nickname;
+    return _session();
+  }
+
+  /// socialLogin에 넘어온 닉네임. 화면이 무엇을 보냈는지 확인할 때 씁니다.
+  String? socialNickname;
+
+  @override
   Future<AuthUser> updateNickname(String nickname) async => AuthUser(
         id: 1,
         username: 'teumsae_user',
@@ -264,13 +277,13 @@ class _StubAuthRepository extends AuthRepository {
   Future<void> deleteAccount(String password) async {}
 }
 
-AuthSession _session() => AuthSession(
-      user: const AuthUser(
+AuthSession _session({String provider = 'LOCAL'}) => AuthSession(
+      user: AuthUser(
         id: 1,
         username: 'teumsae_user',
         nickname: '틈새유저',
         role: 'USER',
-        provider: 'LOCAL',
+        provider: provider,
       ),
       tokens: AuthTokens(
         tokenType: 'Bearer',
@@ -348,6 +361,8 @@ Future<void> _pumpApp(
   List<Map<String, dynamic>> reviews = const [],
   Set<int> blockedIds = const {},
   Map<String, dynamic>? profile,
+  SocialSignIn? socialSignIn,
+  String provider = 'LOCAL',
 }) async {
   Get.testMode = true;
 
@@ -357,10 +372,16 @@ Future<void> _pumpApp(
   Get.put<TokenStore>(tokenStore, permanent: true);
   Get.put<ApiClient>(apiClient, permanent: true);
   Get.put<AuthRepository>(
-    _StubAuthRepository(restored: signedIn ? _session() : null),
+    _StubAuthRepository(
+      restored: signedIn ? _session(provider: provider) : null,
+    ),
     permanent: true,
   );
-  Get.put<AuthController>(AuthController(Get.find()), permanent: true);
+  // 넘기지 않으면 소셜 버튼이 없는 화면이 됩니다. (Firebase는 위젯 테스트에서 못 씁니다)
+  Get.put<AuthController>(
+    AuthController(Get.find(), socialSignIn: socialSignIn),
+    permanent: true,
+  );
   // ShellController와 PlacesController는 ShellBinding이 만들어 줍니다.
   Get.put<PlacesRepository>(
     _StubPlacesRepository(places, reviews: reviews),
@@ -1486,6 +1507,28 @@ void main() {
 
       expect(Get.find<AuthController>().isSignedIn, isTrue);
     });
+
+    testWidgets('소셜 계정에는 비밀번호 변경·탈퇴 폼 대신 안내를 띄운다', (tester) async {
+      // 서버가 소셜 계정에 임의의 비밀번호를 넣어 두므로 두 폼 모두 성공할 수 없습니다.
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.settings,
+        signedIn: true,
+        provider: 'FIREBASE',
+      );
+
+      expect(find.text('아이디로 가입한 계정만 비밀번호를 바꿀 수 있습니다.'), findsOneWidget);
+      expect(find.widgetWithText(TextFormField, '현재 비밀번호'), findsNothing);
+
+      await tester.scrollUntilVisible(
+        find.text('소셜 계정 탈퇴는 아직 앱에서 할 수 없습니다. 문의해 주시면 처리해 드립니다.'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+
+      expect(find.widgetWithText(TextFormField, '비밀번호 재확인'), findsNothing);
+      expect(find.widgetWithText(FilledButton, '회원 탈퇴'), findsNothing);
+    });
   });
 
   group('인증 화면', () {
@@ -1513,6 +1556,111 @@ void main() {
         find.text('아이디는 영문 소문자, 숫자, 밑줄(_)만 사용할 수 있습니다.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('Firebase가 준비되지 않으면 소셜 버튼을 감춘다', (tester) async {
+      // socialSignIn을 넘기지 않은 상태가 Firebase 설정이 없는 경우와 같습니다.
+      await _pumpApp(tester, initialRoute: AppRoutes.login);
+
+      expect(find.text('Google 계정으로 계속하기'), findsNothing);
+      expect(find.text('Apple로 계속하기'), findsNothing);
+      expect(find.text('또는 이메일로 계속'), findsNothing);
+      // 버튼이 하나뿐이면 수단을 밝히지 않습니다.
+      expect(find.widgetWithText(FilledButton, '로그인'), findsOneWidget);
+    });
+
+    testWidgets('소셜 버튼이 있으면 이메일 로그인임을 밝힌다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.login,
+        socialSignIn: FakeSocialSignIn(
+          credential: const SocialCredential(idToken: 'token'),
+        ),
+      );
+
+      expect(find.text('Google 계정으로 계속하기'), findsOneWidget);
+      expect(find.text('Apple로 계속하기'), findsOneWidget);
+      expect(find.text('또는 이메일로 계속'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '이메일로 로그인'), findsOneWidget);
+    });
+
+    testWidgets('구글 버튼은 아이디·비밀번호 검증 없이 바로 로그인한다', (tester) async {
+      final social = FakeSocialSignIn(
+        credential: const SocialCredential(
+          idToken: 'token',
+          displayName: '구글유저',
+        ),
+      );
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.login,
+        socialSignIn: social,
+      );
+
+      await tester.tap(find.text('Google 계정으로 계속하기'));
+      await tester.pumpAndSettle();
+
+      expect(social.requestedProvider, SocialProvider.google);
+      expect(Get.find<AuthController>().isSignedIn, isTrue);
+      // 빈 폼이어도 검증 문구가 뜨지 않습니다.
+      expect(find.text('아이디를 입력해 주세요.'), findsNothing);
+    });
+
+    testWidgets('소셜 로그인 실패 문구는 화면에 그대로 뜬다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.login,
+        socialSignIn: FakeSocialSignIn(
+          error: const SocialSignInException('애플 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.'),
+        ),
+      );
+
+      await tester.tap(find.text('Apple로 계속하기'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('애플 로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.'),
+        findsOneWidget,
+      );
+      expect(Get.find<AuthController>().isSignedIn, isFalse);
+    });
+
+    testWidgets('소셜 창을 닫으면 에러 없이 로그인 화면에 남는다', (tester) async {
+      // credential이 null이면 사용자가 취소한 것으로 봅니다.
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.login,
+        socialSignIn: FakeSocialSignIn(),
+      );
+
+      await tester.tap(find.text('Google 계정으로 계속하기'));
+      await tester.pumpAndSettle();
+
+      expect(Get.find<AuthController>().isSignedIn, isFalse);
+      expect(find.text('Google 계정으로 계속하기'), findsOneWidget);
+      // 취소는 실패가 아니므로 에러 문구를 띄우지 않습니다. (웹은 문구를 띄웁니다)
+      expect(find.textContaining('실패'), findsNothing);
+    });
+
+    testWidgets('회원가입 화면의 닉네임은 소셜 로그인에도 함께 넘어간다', (tester) async {
+      await _pumpApp(
+        tester,
+        initialRoute: AppRoutes.signup,
+        socialSignIn: FakeSocialSignIn(
+          credential: const SocialCredential(
+            idToken: 'token',
+            displayName: '구글유저',
+          ),
+        ),
+      );
+
+      // 아이디 · 닉네임 · 비밀번호 순서라 닉네임이 두 번째입니다.
+      await tester.enterText(find.byType(TextFormField).at(1), '내가정한닉');
+      await tester.tap(find.text('Google 계정으로 계속하기'));
+      await tester.pumpAndSettle();
+
+      final repository = Get.find<AuthRepository>() as _StubAuthRepository;
+      expect(repository.socialNickname, '내가정한닉');
     });
   });
 }

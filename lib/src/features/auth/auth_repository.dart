@@ -69,6 +69,28 @@ class AuthRepository {
     return _persist(AuthSession.fromJson(response));
   }
 
+  /// Firebase idToken으로 로그인합니다. (구글·애플)
+  ///
+  /// 웹용 `/api/auth/firebase`와 같은 서비스를 쓰는 토큰 경로입니다.
+  /// 처음이면 서버가 계정을 만들고, 있으면 그 계정으로 이어집니다.
+  /// (`AuthService.firebaseLogin` → `provider=FIREBASE`, `providerId=Firebase uid`)
+  Future<AuthSession> socialLogin({
+    required String idToken,
+    String? nickname,
+  }) async {
+    final response = await _apiClient.postJson(
+      '$_basePath/firebase',
+      body: {
+        'idToken': idToken,
+        if (nickname != null && nickname.trim().isNotEmpty)
+          'nickname': nickname.trim(),
+        'deviceLabel': deviceLabel(),
+      },
+    );
+
+    return _persist(AuthSession.fromJson(response));
+  }
+
   /// 저장된 refresh token으로 세션을 복구합니다. 없거나 만료면 `null`.
   Future<AuthSession?> restoreSession() async {
     final stored = await _tokenStore.read();

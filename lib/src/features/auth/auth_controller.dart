@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../core/auth/social_sign_in.dart';
 import '../../core/network/api_exception.dart';
 import 'auth_repository.dart';
 import 'auth_user.dart';
@@ -8,14 +9,19 @@ import 'auth_user.dart';
 ///
 /// 화면은 `Obx(() => ...)` 안에서 [user], [isSubmitting], [errorMessage]를 읽습니다.
 class AuthController extends GetxController {
-  AuthController(this._repository);
+  AuthController(this._repository, {SocialSignIn? socialSignIn})
+      : _socialSignIn = socialSignIn;
 
   final AuthRepository _repository;
+
+  /// 소셜 로그인 수단. 등록하지 않으면(`null`) 화면에서 소셜 버튼이 사라집니다.
+  final SocialSignIn? _socialSignIn;
 
   final _user = Rxn<AuthUser>();
   final _isRestoring = true.obs;
   final _isSubmitting = false.obs;
   final _errorMessage = RxnString();
+  final _pendingSocial = Rxn<SocialProvider>();
 
   /// 로그인한 사용자. 로그아웃 상태면 `null`.
   AuthUser? get user => _user.value;
@@ -25,6 +31,14 @@ class AuthController extends GetxController {
   bool get isRestoring => _isRestoring.value;
 
   bool get isSubmitting => _isSubmitting.value;
+
+  /// 소셜 로그인 버튼을 보여도 되는 상태인지.
+  ///
+  /// Firebase 설정이 없으면 눌러도 실패만 하므로 아예 감춥니다.
+  bool get isSocialAvailable => _socialSignIn?.isAvailable ?? false;
+
+  /// 지금 연동 중인 소셜 수단. 없으면 `null`. (버튼 문구를 바꾸는 데 씁니다)
+  SocialProvider? get pendingSocial => _pendingSocial.value;
 
   /// 서버 메시지는 이미 한글이므로 화면에서 그대로 보여주면 됩니다.
   String? get errorMessage => _errorMessage.value;
@@ -75,10 +89,56 @@ class AuthController extends GetxController {
     );
   }
 
+  /// 소셜 계정(구글·애플)으로 로그인합니다.
+  ///
+  /// Firebase에서 idToken을 받아 서버 `POST /api/auth/token/firebase`로 넘깁니다.
+  /// 사용자가 소셜 창을 닫으면 아무 일도 없었던 것처럼 둡니다.
+  ///
+  /// [nickname]은 회원가입 화면에서 적은 값입니다. 비어 있으면 소셜 계정의 이름을
+  /// 씁니다. 둘 다 없으면 서버가 토큰의 이름·이메일로 채웁니다.
+  Future<void> signInWithSocial(
+    SocialProvider provider, {
+    String? nickname,
+  }) async {
+    final socialSignIn = _socialSignIn;
+    if (socialSignIn == null) {
+      return;
+    }
+
+    _pendingSocial.value = provider;
+    _errorMessage.value = null;
+
+    try {
+      final credential = await socialSignIn.authenticate(provider);
+      if (credential == null) {
+        // 사용자가 취소했습니다. 에러 문구를 띄우지 않습니다.
+        return;
+      }
+
+      final session = await _repository.socialLogin(
+        idToken: credential.idToken,
+        nickname: (nickname != null && nickname.trim().isNotEmpty)
+            ? nickname
+            : credential.displayName,
+      );
+      _user.value = session.user;
+    } on SocialSignInException catch (error) {
+      _errorMessage.value = error.message;
+    } on ApiException catch (error) {
+      _errorMessage.value = error.message;
+    } on Object {
+      _errorMessage.value = '요청을 처리할 수 없습니다. 잠시 후 다시 시도해 주세요.';
+    } finally {
+      _pendingSocial.value = null;
+    }
+  }
+
   Future<void> logout() async {
     _isSubmitting.value = true;
     try {
       await _repository.logout();
+      // 소셜 세션도 끊어야 다음 로그인에서 계정을 다시 고를 수 있습니다.
+      await _socialSignIn?.signOut();
       _user.value = null;
       _errorMessage.value = null;
     } finally {
@@ -119,6 +179,7 @@ class AuthController extends GetxController {
   /// 계정을 탈퇴하고 로그아웃 상태로 되돌립니다.
   Future<void> deleteAccount(String password) async {
     await _repository.deleteAccount(password);
+    await _socialSignIn?.signOut();
     _user.value = null;
     _errorMessage.value = null;
   }

@@ -43,6 +43,14 @@ dependencies:
   flutter_naver_map: ^1.4.4
   url_launcher: ^6.3.2
 
+  # 소셜 로그인. 웹과 같은 Firebase 프로젝트(teum-sae)를 거쳐 idToken을 받고
+  # 서버 `POST /api/auth/token/firebase`로 넘깁니다.
+  # google_sign_in은 구글 계정에서 Firebase 자격증명을 만드는 데만 씁니다.
+  # (애플은 firebase_auth의 `AppleAuthProvider`가 직접 처리합니다)
+  firebase_core: ^4.14.0
+  firebase_auth: ^6.6.1
+  google_sign_in: ^7.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../core/auth/social_sign_in.dart';
 import '../../features/account/settings_controller.dart';
 import '../../features/auth/auth_controller.dart';
 import '../../features/auth/auth_repository.dart';
@@ -50,8 +51,15 @@ class InitialBinding extends Bindings {
       permanent: true,
     );
 
+    // 소셜 로그인도 플랫폼 채널만 쓰고 상태가 없어서 앱 전체에 하나만 둡니다.
+    // 인터페이스로 등록해 두면 위젯 테스트가 Firebase 없는 대역으로 바꿔 낄 수 있습니다.
+    Get.put<SocialSignIn>(FirebaseSocialSignIn(), permanent: true);
+
     Get.put<AuthController>(
-      AuthController(Get.find<AuthRepository>()),
+      AuthController(
+        Get.find<AuthRepository>(),
+        socialSignIn: Get.find<SocialSignIn>(),
+      ),
       permanent: true,
     );
 

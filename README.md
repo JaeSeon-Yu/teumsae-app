@@ -51,6 +51,36 @@ flutter run \
 Client **Secret**은 앱에 넣지 않습니다. 서버측 REST API(Geocoding·Directions)
 인증용이고, 앱 바이너리에 넣으면 그대로 추출됩니다.
 
+### Firebase 설정 (소셜 로그인)
+
+소셜 로그인은 웹과 같은 Firebase 프로젝트(`teum-sae`)를 씁니다. 설정은 `--dart-define`이
+아니라 **네이티브 설정 파일**에서 읽으므로 아래 두 파일이 있어야 빌드·실행됩니다.
+(둘 다 Firebase 콘솔 > 프로젝트 설정에서 받습니다)
+
+```
+android/app/google-services.json          Android 앱 (kr.co.jason.teumsae)
+ios/Runner/GoogleService-Info.plist       iOS 앱 (kr.co.jason.teumsae)
+```
+
+Android는 `google-services` Gradle 플러그인이 이 json을 읽어 `default_web_client_id`를
+만들고, `google_sign_in`이 그 값을 서버 클라이언트 ID로 씁니다. 그래서 앱에 클라이언트
+ID를 따로 적지 않습니다. **json이 없으면 Gradle 빌드가 실패합니다.**
+
+iOS는 Firebase SDK가 plist를 직접 읽지만, `google_sign_in`은 보지 않습니다.
+그래서 `ios/Runner/Info.plist`에 두 값을 따로 적어 둡니다. plist를 다시 받으면
+이 두 값도 함께 맞춰야 합니다.
+
+| Info.plist 키 | GoogleService-Info.plist에서 가져오는 값 |
+| --- | --- |
+| `GIDClientID` | `CLIENT_ID` |
+| `CFBundleURLSchemes` | `REVERSED_CLIENT_ID` |
+
+설정이 없거나 잘못돼도 앱은 그대로 뜹니다. `FirebaseBootstrap`이 이유만 남기고
+로그인 화면에서 소셜 버튼을 감춥니다. 아이디·비밀번호 로그인은 계속 됩니다.
+
+`firebase_core`·`firebase_auth`가 iOS 15.0 이상을 요구해서 배포 타깃을 13.0에서
+15.0으로 올렸습니다. (`Podfile`, `Runner.xcodeproj`)
+
 ## 검증
 
 ```bash
@@ -68,6 +98,10 @@ flutter test integration_test/map_auth_test.dart \
 
 등록되지 않은 키로 돌리면 `네이버 지도 인증에 실패했습니다. (401)`로 떨어집니다.
 플랫폼별로 등록이 따로라 Android·iOS 양쪽에서 확인하는 편이 좋습니다.
+
+소셜 로그인도 위젯 테스트로 확인할 수 없습니다. Firebase·구글 SDK가 플랫폼 채널을
+타기 때문에 테스트는 `FakeSocialSignIn`으로 화면 배선만 봅니다. 실제 로그인은
+기기를 붙여서 확인해야 합니다. (Android는 SHA-1, iOS는 Bundle ID 등록이 선행 조건)
 
 ### Android 빌드: SDK platform 이름 불일치
 
@@ -104,6 +138,9 @@ lib/
     core/
       bindings/initial_binding.dart  Get.put/lazyPut 의존성 등록
       config/app_config.dart       API 주소, 검색 기본값 (--dart-define)
+      auth/
+        firebase_bootstrap.dart    Firebase 초기화 · 소셜 로그인 사용 가능 여부
+        social_sign_in.dart        구글·애플 → Firebase idToken (+ 테스트용 구현)
       network/
         api_client.dart            Dio + 토큰 부착 + 401 자동 갱신
         api_exception.dart         서버 {status, message} → 화면용 예외
@@ -164,9 +201,9 @@ lib/
 
 - **의존성**: 모든 등록은 `core/bindings/initial_binding.dart`에 모읍니다.
   화면에서 `Get.put`을 직접 호출하지 않습니다.
-  - `InitialBinding`: TokenStore, ApiClient, AuthRepository, `AuthController`,
-    PlacesRepository, LocationService, PlaceMapBuilder, SavedRepository,
-    `SavedController`를 `permanent: true`로 등록합니다.
+  - `InitialBinding`: TokenStore, ApiClient, AuthRepository, `SocialSignIn`,
+    `AuthController`, PlacesRepository, LocationService, PlaceMapBuilder,
+    SavedRepository, `SavedController`를 `permanent: true`로 등록합니다.
     로그인 상태와 저장 상태는 라우트가 바뀌어도 유지돼야 하기 때문입니다.
   - `ShellBinding`: 셸(`/`)에서만 쓰는 `ShellController`와 `PlacesController`를
     `lazyPut`으로 등록합니다. 검색 화면이 셸의 탭 안에 있어 수명이 같습니다.
@@ -193,6 +230,7 @@ lib/
 | --- | --- |
 | 회원가입 | `POST /api/auth/token/signup` |
 | 로그인 | `POST /api/auth/token/login` |
+| 소셜 로그인 (구글·애플) | `POST /api/auth/token/firebase` |
 | 토큰 갱신 | `POST /api/auth/token/refresh` |
 | 로그아웃 | `POST /api/auth/token/logout` |
 | 검색 | `GET /api/places/search` (로그인 불필요) |
@@ -253,7 +291,7 @@ lib/
 7. ~~리뷰~~ (완료: 상세 화면의 방문자 후기 · 작성 · 삭제)
 8. ~~지도 (검색 결과 · 상세)~~ (완료: 네이버 지도 · `flutter_naver_map`)
 9. ~~장소 등록·수정 + 내가 등록한 장소~~ (완료: 폼 · 지도 핀 · 내 등록 목록)
-10. 소셜 로그인 (Firebase Google/Apple)
+10. ~~소셜 로그인 (Firebase Google/Apple)~~ (완료: 로그인·회원가입 화면의 소셜 버튼)
 11. ~~공개 프로필 + 차단·신고~~ (완료: `/users/:username` · 후기 신고·차단)
 
 관리자 화면은 앱에 넣지 않습니다. 웹에서만 쓰는 운영 화면입니다.
@@ -400,6 +438,35 @@ lib/
 - 로그인하지 않은 상태에서 저장 버튼을 누르면 서버에 401을 만들지 않고
   바로 로그인 화면으로 보냅니다.
 
+### 소셜 로그인
+
+로그인·회원가입 화면 위쪽에 구글·애플 버튼이 있습니다. 웹 `AuthForm.tsx`와 같은 흐름입니다.
+
+- **웹과 같은 Firebase 경유 방식을 씁니다.** 서버에는 `/api/auth/token/social`
+  (구글·애플 토큰을 직접 받는 경로)도 있지만 쓰지 않습니다. 계정 식별자가
+  `(provider, providerId)` 쌍인데(`AuthService.firebaseLogin` →
+  `findByProviderAndProviderId`) 웹은 `FIREBASE` + Firebase uid로 저장됩니다.
+  앱이 `social` 경로로 생 구글 토큰을 보내면 `GOOGLE` + 구글 sub가 되어
+  **같은 구글 계정이 웹과 앱에서 서로 다른 계정**이 됩니다.
+- 구글은 `google_sign_in`으로 계정을 고른 뒤 Firebase 자격증명을 만들고, 애플은
+  `firebase_auth`의 `AppleAuthProvider`가 직접 처리합니다. (iOS는 네이티브 시트,
+  Android는 웹 흐름) 애플용 패키지를 따로 넣지 않은 이유입니다.
+- 소셜 SDK는 `core/auth/social_sign_in.dart`의 `SocialSignIn` 뒤에 둡니다.
+  플랫폼 채널을 타서 위젯 테스트에서 실제 구현을 쓸 수 없습니다.
+  (`FakeSocialSignIn`이 테스트용 구현)
+- 초기화는 `FirebaseBootstrap`이 `runApp` 전에 한 번 합니다. **초기화 전에는
+  준비되지 않은 상태로 둡니다.** 그래야 초기화를 잊었을 때 버튼이 보였다가
+  눌러야 실패하는 상황이 생기지 않습니다.
+- 준비되지 않으면 버튼을 **감춥니다.** 눌러도 실패만 하는 버튼을 보여 줄 이유가 없고,
+  아이디·비밀번호 로그인이 그대로 있어서 사용자가 막히지 않습니다.
+- 로그아웃·탈퇴 시 Firebase와 구글 세션도 함께 끊습니다. 남겨 두면 다음 로그인에서
+  계정 선택 화면 없이 이전 계정으로 바로 들어가 다른 계정으로 바꿀 수 없습니다.
+- 닉네임은 회원가입 화면에 적어 둔 값 → 소셜 계정 이름 순으로 씁니다. 둘 다 없으면
+  서버가 토큰의 이름·이메일로 채웁니다. (`AuthService.firebaseLogin`)
+- 소셜 계정은 `provider`가 `FIREBASE`라서 설정 화면의 비밀번호 변경·회원 탈퇴가
+  폼 대신 안내로 바뀝니다. 서버가 가입 때 임의의 비밀번호를 넣어 두고 두 기능
+  모두 그 값을 확인하므로, 폼을 보여 주면 무엇을 넣어도 실패합니다.
+
 ### 웹과 일부러 다르게 한 것
 
 - 운영시간 요일 배지 색: 웹은 주말(`토`/`일`) 판정을 평일보다 먼저 해서
@@ -411,6 +478,14 @@ lib/
   (위 "서버 연동 규칙" 참고)
 - 소셜 계정의 비밀번호 변경: 웹은 폼을 그대로 보여 주고 서버 실패로 알려 주지만,
   앱은 `provider != LOCAL`이면 폼 대신 안내 문구를 띄웁니다.
+- 소셜 로그인 취소: 웹은 "구글 로그인 팝업 창이 닫혔습니다."를 띄우지만 앱은
+  아무 문구도 띄우지 않습니다. 앱에서 뒤로 가기·시트 닫기는 흔한 조작이라
+  그때마다 에러 배너가 뜨면 잘못한 것처럼 보입니다.
+- 소셜 로그인 실패 문구: 웹은 Firebase 에러 코드와 설정 안내를 화면에 그대로
+  노출하지만(`Firebase Console > ... 사용 설정` 등) 앱은 사용자가 할 수 있는
+  조치만 한글로 알립니다. 설정 문제는 사용자가 고칠 수 없습니다.
+- 이메일 로그인 버튼 문구: 소셜 버튼이 함께 보일 때만 "이메일로 로그인"이 되고,
+  Firebase가 없어 버튼이 감춰지면 그냥 "로그인"입니다. 웹은 항상 "이메일로"입니다.
 - 검색 반경 선택: 웹에는 없습니다. 웹은 지도를 움직여 범위를 바꾸는데, 앱은
   좁은 화면에서 목록을 주로 보기 때문에 지도를 열지 않고도 범위를 넓힐 수단이
   필요합니다. (지도에서는 "이 지역 재검색"으로 중심을 옮길 수 있습니다)
@@ -421,20 +496,27 @@ lib/
 
 ## 아직 하지 않은 것
 
-- 소셜/Firebase 로그인. (위 이식 순서 참고) 아래 준비물이 있어야 시작할 수 있습니다.
-  - 서버는 이미 받을 준비가 돼 있습니다. `POST /api/auth/token/social`
-    (`provider` + `idToken`)과 `POST /api/auth/token/firebase`(`idToken`)이 있고,
-    `ApiClient._publicPaths`에도 두 경로가 들어 있습니다. 앱에 없는 것은
-    **idToken을 받아 오는 부분**입니다.
-  - 웹은 Firebase 프로젝트 `teum-sae`를 씁니다. 앱도 같은 프로젝트를 쓰려면
-    그 프로젝트에 Android(`kr.co.jason.teumsae`)와 iOS(같은 Bundle ID) 앱을
-    등록해 `google-services.json`·`GoogleService-Info.plist`를 받아야 합니다.
-    (둘 다 아직 없습니다)
-  - Android 구글 로그인은 서명 키 SHA-1을 Firebase에 등록해야 합니다.
+- 소셜 로그인의 **실기기 확인**. 코드는 다 있고 빌드도 통하지만, 아래가 아직 남아
+  실제 로그인은 성공하지 못합니다. (모두 Firebase 콘솔·Apple 쪽 작업입니다)
+  - **iOS `GoogleService-Info.plist`의 Bundle ID가 어긋납니다.** 파일에는
+    `kr.co.jason`이 들어 있고 Xcode 프로젝트는 `kr.co.jason.teumsae`입니다.
+    콘솔에서 iOS 앱을 `kr.co.jason.teumsae`로 등록해 plist를 다시 받아야 합니다.
+    (다시 받으면 `Info.plist`의 `GIDClientID`·`CFBundleURLSchemes`도 함께 맞춥니다)
+  - **Android 서명 키 SHA-1이 등록되지 않았습니다.** `google-services.json`에
+    `client_type: 1`(Android OAuth 클라이언트) 항목이 없는 것이 그 신호입니다.
+    이 상태로는 구글 로그인이 `DEVELOPER_ERROR`(오류 10)로 떨어집니다.
     디버그 키는 `77:1B:71:2D:89:C8:17:62:58:14:4A:D0:D6:D6:32:99:79:36:B4:75`이고,
-    출시용은 릴리스 키스토어에서 따로 뽑아야 합니다.
+    출시용은 릴리스 키스토어에서 따로 뽑아야 합니다. 등록한 뒤 json을 다시 받습니다.
   - Apple 로그인은 유료 Apple Developer 계정에서 Sign in with Apple 권한을
     켜야 합니다. Xcode 서명 설정도 함께 손봐야 합니다.
+  - Firebase 콘솔 > Authentication > Sign-in method에서 Google·Apple이 켜져
+    있어야 합니다. 꺼져 있으면 `operation-not-allowed`로 떨어집니다.
+- 구글·애플 브랜드 로고 에셋. 지금은 글자만 있는 버튼입니다. 두 회사 모두 버튼
+  모양을 지침으로 정해 두었으니 출시 전에 로고를 넣어야 합니다.
+- **소셜 계정의 회원 탈퇴.** 서버 `AuthService.deleteAccount`가 비밀번호를
+  확인하는데, 소셜 계정에는 사용자가 아는 비밀번호가 없습니다
+  (가입 때 임의의 UUID를 넣습니다). 웹도 같은 상태입니다. 앱은 폼 대신 안내를
+  띄워 두었고, 제대로 하려면 서버에 소셜 계정용 탈퇴 경로가 필요합니다.
 - 등록 폼의 요일별 운영시간: 앱은 24시간·시간 범위·직접 입력만 만들 수 있습니다.
   (웹 `OperatingHoursForm`처럼 요일 그룹을 짜는 UI는 좁은 화면에서 입력 부담이 큽니다)
 - 다크 테마: 웹에도 다크 토큰이 없어 함께 정의한 뒤 옮기는 편이 낫습니다.

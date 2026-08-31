@@ -21,6 +21,8 @@ plugins {
     id("dev.flutter.flutter-plugin-loader") version "1.0.0"
     id("com.android.application") version "8.11.1" apply false
     id("org.jetbrains.kotlin.android") version "2.2.20" apply false
+    // google-services.json을 읽어 Firebase 설정을 리소스로 만듭니다. (소셜 로그인)
+    id("com.google.gms.google-services") version "4.5.0" apply false
 }
 
 include(":app")

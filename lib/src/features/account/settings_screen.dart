@@ -208,40 +208,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
             );
           }),
           const SizedBox(height: AppSpacing.md),
-          AppSectionCard(
-            title: '회원 탈퇴',
-            child: Form(
-              key: _deleteFormKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '탈퇴하면 이 계정으로 다시 로그인할 수 없습니다.'
-                    ' 작성한 후기와 저장 목록은 운영 지침에 따라 처리됩니다.',
-                    style: textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: AppSpacing.md),
-                  TextFormField(
-                    controller: _deletePassword,
-                    decoration: const InputDecoration(labelText: '비밀번호 재확인'),
-                    obscureText: true,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    validator: AuthValidators.validateLoginPassword,
-                  ),
-                  Obx(
-                    () => _FormFeedback(
-                      status: _controller.deleteAccount,
-                      submitLabel: '회원 탈퇴',
-                      submittingLabel: '탈퇴 중...',
-                      onSubmit: _submitDeleteAccount,
-                      isDanger: true,
+          Obx(() {
+            // 소셜 계정은 사용자가 아는 비밀번호가 없습니다. 서버가 가입 때 임의의 값을
+            // 넣어 두고 탈퇴에서 그 값을 확인하므로(`AuthService.deleteAccount`)
+            // 폼을 보여 주면 무엇을 넣어도 실패합니다. 비밀번호 변경과 같은 이유입니다.
+            if (_auth.user?.provider != 'LOCAL') {
+              return const AppSectionCard(
+                title: '회원 탈퇴',
+                child: AppCallout(
+                  title: '소셜 계정 탈퇴는 아직 앱에서 할 수 없습니다. 문의해 주시면 처리해 드립니다.',
+                  tone: CalloutTone.info,
+                ),
+              );
+            }
+
+            return AppSectionCard(
+              title: '회원 탈퇴',
+              child: Form(
+                key: _deleteFormKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      '탈퇴하면 이 계정으로 다시 로그인할 수 없습니다.'
+                      ' 작성한 후기와 저장 목록은 운영 지침에 따라 처리됩니다.',
+                      style: textTheme.bodySmall,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: AppSpacing.md),
+                    TextFormField(
+                      controller: _deletePassword,
+                      decoration: const InputDecoration(labelText: '비밀번호 재확인'),
+                      obscureText: true,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      validator: AuthValidators.validateLoginPassword,
+                    ),
+                    Obx(
+                      () => _FormFeedback(
+                        status: _controller.deleteAccount,
+                        submitLabel: '회원 탈퇴',
+                        submittingLabel: '탈퇴 중...',
+                        onSubmit: _submitDeleteAccount,
+                        isDanger: true,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          }),
           const SizedBox(height: AppSpacing.xl),
         ],
       ),

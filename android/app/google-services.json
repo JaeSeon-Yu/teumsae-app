@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "594160077031",
+    "project_id": "teum-sae",
+    "storage_bucket": "teum-sae.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:594160077031:android:edf3586cf2c5afbb9eba42",
+        "android_client_info": {
+          "package_name": "kr.co.jason.teumsae"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "594160077031-apjijhfn8n8l9npjenmter9d5uf5ihbn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwPNsNJeqrgia49D29jNmQP7996SMKcWY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "594160077031-apjijhfn8n8l9npjenmter9d5uf5ihbn.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "594160077031-d021n8j5joe0k3ap4c42d6r4udjgelmi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "kr.co.jason"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
